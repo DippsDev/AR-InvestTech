@@ -1,0 +1,11 @@
+metatrader5==5.0.5735
+matplotlib>=3.8.0
+numpy==2.4.6
+pandas==3.0.3
+python-dateutil==2.9.0.post0
+python-dotenv==1.2.2
+fastapi>=0.100
+pywebview>=5.0
+uvicorn>=0.20
+six==1.17.0
+tzdata==2026.2
