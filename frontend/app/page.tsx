@@ -151,7 +151,11 @@ export default function App() {
 
       {/* ── Activation ──────────────────────────────────────────────────────── */}
       {screen === "activation" && (
-        <Activation onActivated={handleActivated} doValidate={k => mockApi.validateLicense(k)} />
+        <Activation
+          onActivated={handleActivated}
+          doValidate={k  => mockApi.validateLicense(k)}
+          doValidate2={k => mockApi.validateActivation(k)}
+        />
       )}
 
       {/* ── App shell ───────────────────────────────────────────────────────── */}

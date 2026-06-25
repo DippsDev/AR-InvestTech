@@ -72,8 +72,16 @@ export const ALL_TRADES: Trade[] = [
 ];
 
 export const mockApi = {
-  async validateLicense(_key: string) {
-    await new Promise(r => setTimeout(r, 1400));
+  async validateLicense(key: string) {
+    await new Promise(r => setTimeout(r, 1200));
+    const expected = process.env.NEXT_PUBLIC_LICENSE_KEY;
+    if (!expected || key !== expected) return { ok: false, error: "Invalid license key." };
+    return { ok: true };
+  },
+  async validateActivation(key: string) {
+    await new Promise(r => setTimeout(r, 1200));
+    const expected = process.env.NEXT_PUBLIC_ACTIVATION_CODE;
+    if (!expected || key !== expected) return { ok: false, error: "Invalid activation code." };
     return { ok: true };
   },
   async connectMt5() {

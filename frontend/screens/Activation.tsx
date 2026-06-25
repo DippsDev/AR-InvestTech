@@ -2,8 +2,9 @@
 import { useState, useCallback } from "react";
 
 interface Props {
-  onActivated: () => void;
-  doValidate: (key: string) => Promise<{ ok: boolean; error?: string }>;
+  onActivated:  () => void;
+  doValidate:   (key: string) => Promise<{ ok: boolean; error?: string }>;
+  doValidate2:  (key: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 function fmtKey(raw: string) {
@@ -12,28 +13,71 @@ function fmtKey(raw: string) {
   return parts.join("-");
 }
 
-export default function Activation({ onActivated, doValidate }: Props) {
-  const [key,     setKey]     = useState("");
-  const [error,   setError]   = useState("");
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  boxSizing: "border-box",
+  background: "var(--act-input-bg)",
+  border: "1px solid var(--act-border)",
+  borderRadius: 8,
+  padding: "11px 14px",
+  fontSize: 14,
+  color: "var(--act-text)",
+  outline: "none",
+  fontFamily: "ui-monospace, Consolas, monospace",
+  letterSpacing: ".1em",
+  textAlign: "center",
+  transition: "background 0.2s ease, border-color 0.2s ease, color 0.2s ease",
+};
+
+const labelStyle: React.CSSProperties = {
+  display: "block",
+  fontSize: 11,
+  fontWeight: 600,
+  color: "var(--act-text-sub)",
+  textTransform: "uppercase",
+  letterSpacing: ".05em",
+  marginBottom: 6,
+};
+
+export default function Activation({ onActivated, doValidate, doValidate2 }: Props) {
+  const [key1,    setKey1]    = useState("");
+  const [key2,    setKey2]    = useState("");
+  const [error1,  setError1]  = useState("");
+  const [error2,  setError2]  = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setKey(fmtKey(e.target.value));
-    setError("");
+  const handleKey1 = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setKey1(fmtKey(e.target.value));
+    setError1("");
+  }, []);
+
+  const handleKey2 = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setKey2(fmtKey(e.target.value));
+    setError2("");
   }, []);
 
   const activate = useCallback(async () => {
     if (loading) return;
-    setError("");
+    setError1("");
+    setError2("");
+
+    // Require both fields before touching the API
+    let localErr = false;
+    if (!key1) { setError1("License key is required."); localErr = true; }
+    if (!key2) { setError2("Activation code is required."); localErr = true; }
+    if (localErr) return;
+
     setLoading(true);
     try {
-      const res = await doValidate(key);
-      if (res.ok) onActivated();
-      else setError(res.error ?? "Invalid license key. Please try again.");
+      const [res1, res2] = await Promise.all([doValidate(key1), doValidate2(key2)]);
+      let hasError = false;
+      if (!res1.ok) { setError1(res1.error ?? "Invalid license key."); hasError = true; }
+      if (!res2.ok) { setError2(res2.error ?? "Invalid activation code."); hasError = true; }
+      if (!hasError) onActivated();
     } finally {
       setLoading(false);
     }
-  }, [key, loading, doValidate, onActivated]);
+  }, [key1, key2, loading, doValidate, doValidate2, onActivated]);
 
   return (
     <div className="flex-1 flex flex-col animate-fade"
@@ -74,47 +118,44 @@ export default function Activation({ onActivated, doValidate }: Props) {
           Activate Your License
         </h1>
         <p style={{ fontSize: 13, color: "var(--act-text-sub)", margin: "0 0 24px", lineHeight: 1.5 }}>
-          Enter the license key you received after purchase to unlock the bot.
+          Enter both codes from your purchase confirmation to unlock the bot.
         </p>
 
+        {/* Key 1 */}
         <div style={{ textAlign: "left", marginBottom: 14 }}>
-          <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--act-text-sub)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
-            License Key
-          </label>
+          <label style={labelStyle}>License Key</label>
           <input
             type="text"
-            value={key}
-            onChange={handleInput}
+            value={key1}
+            onChange={handleKey1}
             onKeyDown={e => e.key === "Enter" && activate()}
             placeholder="ARB-XXXX-XXXX-XXXX"
             maxLength={19}
             className="act-input"
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              background: "var(--act-input-bg)",
-              border: "1px solid var(--act-border)",
-              borderRadius: 8,
-              padding: "11px 14px",
-              fontSize: 14,
-              color: "var(--act-text)",
-              outline: "none",
-              fontFamily: "ui-monospace, Consolas, monospace",
-              letterSpacing: ".1em",
-              textAlign: "center",
-              transition: "background 0.2s ease, border-color 0.2s ease, color 0.2s ease",
-            }}
+            style={inputStyle}
           />
-          <div style={{ fontSize: 11, color: "var(--act-text-dim)", marginTop: 6, textAlign: "center" }}>
-            Found in your purchase confirmation email
-          </div>
+          {error1 && <div style={{ color: "#F87171", fontSize: 12, marginTop: 5 }}>{error1}</div>}
         </div>
 
-        {error && <div style={{ color: "#F87171", fontSize: 12, marginBottom: 8 }}>{error}</div>}
+        {/* Key 2 */}
+        <div style={{ textAlign: "left", marginBottom: 20 }}>
+          <label style={labelStyle}>Activation Code</label>
+          <input
+            type="text"
+            value={key2}
+            onChange={handleKey2}
+            onKeyDown={e => e.key === "Enter" && activate()}
+            placeholder="ACT-XXXX-XXXX-XXXX"
+            maxLength={19}
+            className="act-input"
+            style={inputStyle}
+          />
+          {error2 && <div style={{ color: "#F87171", fontSize: 12, marginTop: 5 }}>{error2}</div>}
+        </div>
 
         <button
           onClick={activate}
-          disabled={loading}
+          disabled={loading || !key1 || !key2}
           className="w-full flex items-center justify-center gap-2"
           style={{
             background: "var(--nav-start-bg)",
@@ -124,17 +165,16 @@ export default function Activation({ onActivated, doValidate }: Props) {
             padding: "12px 0",
             fontSize: 14,
             fontWeight: 700,
-            cursor: loading ? "not-allowed" : "pointer",
+            cursor: (loading || !key1 || !key2) ? "not-allowed" : "pointer",
             fontFamily: "inherit",
-            marginTop: 4,
-            opacity: loading ? 0.7 : 1,
-            transition: "background 0.2s ease, color 0.2s ease",
+            opacity: (loading || !key1 || !key2) ? 0.45 : 1,
+            transition: "background 0.2s ease, color 0.2s ease, opacity 0.15s ease",
           }}
         >
           {loading ? (
             <>
               <span className="spinner" style={{ width: 14, height: 14, border: "2px solid var(--nav-start-text)", borderTopColor: "transparent", borderRadius: "50%", display: "inline-block" }} />
-              Verifying license…
+              Verifying…
             </>
           ) : "Activate & Continue"}
         </button>
@@ -146,7 +186,7 @@ export default function Activation({ onActivated, doValidate }: Props) {
         </div>
 
         <div style={{ fontSize: 12, color: "var(--act-text-dim)" }}>
-          Need a key?{" "}
+          Need codes?{" "}
           <a href="#" style={{ color: "var(--act-text-sub)", fontWeight: 600, textDecoration: "none" }}>
             Purchase a license →
           </a>
