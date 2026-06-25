@@ -96,24 +96,26 @@ export default function App() {
 
       {/* ── Title bar ───────────────────────────────────────────────────────── */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 select-none"
-           style={{ height: 40, background: "#111827" }}>
+           style={{ height: 40, background: "var(--nav-bg)", transition: "background 0.2s ease" }}>
 
-        {/* Desktop: icon + brand on the left */}
-        <div className="mob-hide-inline flex items-center gap-2 text-white text-[13px] font-semibold">
-          <PulseIcon />
-          AR-InvestTech
+        {/* Desktop: icon + brand on the left (hidden on activation screen) */}
+        <div className="mob-hide-inline flex items-center gap-2 text-[13px] font-semibold" style={{ color: "var(--nav-text)" }}>
           {inApp && (
-            <span className="flex items-center gap-1.5 ml-0.5">
-              <span className="rounded-full" style={{
-                width: 8, height: 8,
-                ...(running
-                  ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" }
-                  : { background: "#9CA3AF" }),
-              }} />
-              <span className="text-[11px] font-normal" style={{ color: "#6B7280" }}>
-                {running ? "Running" : "Stopped"}
+            <>
+              <PulseIcon />
+              AR-InvestTech
+              <span className="flex items-center gap-1.5 ml-0.5">
+                <span className="rounded-full" style={{
+                  width: 8, height: 8,
+                  ...(running
+                    ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" }
+                    : { background: "#9CA3AF" }),
+                }} />
+                <span className="text-[11px] font-normal" style={{ color: "var(--nav-text-dim)" }}>
+                  {running ? "Running" : "Stopped"}
+                </span>
               </span>
-            </span>
+            </>
           )}
         </div>
 
@@ -128,9 +130,9 @@ export default function App() {
           </button>
         )}
 
-        {/* Mobile: brand on the right (no icon) */}
-        <div className="desk-hide items-center gap-2 text-white text-[13px] font-semibold">
-          {inApp && (
+        {/* Mobile: brand on the right (hidden on activation screen) */}
+        {inApp && (
+          <div className="desk-hide items-center gap-2 text-[13px] font-semibold" style={{ marginRight: 16, color: "var(--nav-text)" }}>
             <span className="flex items-center gap-1.5 mr-1">
               <span className="rounded-full" style={{
                 width: 8, height: 8,
@@ -138,13 +140,13 @@ export default function App() {
                   ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" }
                   : { background: "#9CA3AF" }),
               }} />
-              <span className="text-[11px] font-normal" style={{ color: "#6B7280" }}>
+              <span className="text-[11px] font-normal" style={{ color: "var(--nav-text-dim)" }}>
                 {running ? "Running" : "Stopped"}
               </span>
             </span>
-          )}
-          AR-InvestTech
-        </div>
+            AR-InvestTech
+          </div>
+        )}
       </div>
 
       {/* ── Activation ──────────────────────────────────────────────────────── */}
@@ -158,17 +160,17 @@ export default function App() {
         <div className="app-shell">
 
           {/* Sidebar */}
-          <aside className="sidebar-nav flex flex-col flex-shrink-0" style={{ width: 180, background: "#111827", padding: "16px 0" }}>
+          <aside className="sidebar-nav flex flex-col flex-shrink-0" style={{ width: 180, background: "var(--nav-bg)", color: "var(--nav-text)", padding: "16px 0", transition: "background 0.2s ease, color 0.2s ease" }}>
 
             {/* Brand */}
             <div className="flex items-center gap-2 px-4"
-                 style={{ paddingBottom: 18, borderBottom: "1px solid #1F2937", marginBottom: 10 }}>
+                 style={{ paddingBottom: 18, borderBottom: "1px solid var(--nav-border)", marginBottom: 10 }}>
               <PulseIcon size={20} />
               <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase", letterSpacing: ".04em" }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nav-text)", textTransform: "uppercase", letterSpacing: ".04em" }}>
                   AR-InvestTech
                 </div>
-                <div style={{ fontSize: 9, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".05em" }}>
+                <div style={{ fontSize: 9, color: "var(--nav-text-dim)", textTransform: "uppercase", letterSpacing: ".05em" }}>
                   v1.0.0
                 </div>
               </div>
@@ -184,9 +186,9 @@ export default function App() {
                   className="flex items-center gap-2.5 text-[13px] font-semibold text-left w-full"
                   style={{
                     padding: active ? "10px 16px 10px 13px" : "10px 16px",
-                    borderLeft: `3px solid ${active ? "#FFFFFF" : "transparent"}`,
-                    background: active ? "#1F2937" : "transparent",
-                    color: n.disabled ? "#4B5563" : active ? "#FFFFFF" : "#9CA3AF",
+                    borderLeft: `3px solid ${active ? "var(--nav-active-border)" : "transparent"}`,
+                    background: active ? "var(--nav-active-bg)" : "transparent",
+                    color: n.disabled ? "var(--nav-disabled)" : active ? "var(--nav-text)" : "var(--nav-item-text)",
                     transition: "background .12s",
                     cursor: n.disabled ? "not-allowed" : "pointer",
                     opacity: n.disabled ? 0.5 : 1,
@@ -200,24 +202,24 @@ export default function App() {
             <div className="flex-1" />
 
             {/* Bot status */}
-            <div style={{ padding: "12px 16px", borderTop: "1px solid #1F2937" }}>
-              <div style={{ fontSize: 10, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
+            <div style={{ padding: "12px 16px", borderTop: "1px solid var(--nav-border)" }}>
+              <div style={{ fontSize: 10, color: "var(--nav-text-dim)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
                 Bot Status
               </div>
               <div className="flex items-center gap-1.5 font-semibold"
-                   style={{ fontSize: 12, color: running ? "#22C55E" : "#9CA3AF", marginBottom: 8 }}>
+                   style={{ fontSize: 12, color: running ? "#22C55E" : "var(--nav-item-text)", marginBottom: 8 }}>
                 <span className="rounded-full" style={{
                   width: 7, height: 7,
                   ...(running
                     ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" }
-                    : { background: "#6B7280" }),
+                    : { background: "var(--nav-text-dim)" }),
                 }} />
                 {running ? "Running" : "Stopped"}
               </div>
               {running ? (
                 <button onClick={handleToggleBot}
                   className="w-full flex items-center justify-center gap-1.5 rounded-md font-semibold"
-                  style={{ background: "#1F2937", border: "1px solid #374151", color: "#F3F4F6", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
+                  style={{ background: "var(--nav-stop-bg)", border: "1px solid var(--nav-stop-border)", color: "var(--nav-stop-text)", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
                   <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <rect x="6" y="6" width="12" height="12" />
                   </svg>
@@ -226,7 +228,7 @@ export default function App() {
               ) : (
                 <button onClick={handleToggleBot}
                   className="w-full flex items-center justify-center gap-1.5 rounded-md font-bold"
-                  style={{ background: "#FFFFFF", color: "#111827", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
+                  style={{ background: "var(--nav-start-bg)", color: "var(--nav-start-text)", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
                   <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <polygon points="5 3 19 12 5 21 5 3" />
                   </svg>
@@ -235,7 +237,7 @@ export default function App() {
               )}
             </div>
 
-            <div style={{ padding: "10px 16px 0", fontSize: 9, color: "#4B5563", letterSpacing: ".04em" }}>
+            <div style={{ padding: "10px 16px 0", fontSize: 9, color: "var(--nav-text-dim)", letterSpacing: ".04em" }}>
               Developed by DippsDev
             </div>
           </aside>
@@ -262,17 +264,17 @@ export default function App() {
         {menuOpen && <div className="drawer-overlay" onClick={() => setMenuOpen(false)} />}
 
         {/* Slide-in drawer — mobile only */}
-        <div className="mobile-drawer" style={{ transform: menuOpen ? "translateX(0)" : "translateX(-100%)" }}>
+        <div className="mobile-drawer" style={{ transform: menuOpen ? "translateX(0)" : "translateX(-100%)", color: "var(--nav-text)" }}>
 
           {/* Brand */}
           <div className="flex items-center gap-2 px-4"
-               style={{ paddingBottom: 18, borderBottom: "1px solid #1F2937", marginBottom: 10 }}>
+               style={{ paddingBottom: 18, borderBottom: "1px solid var(--nav-border)", marginBottom: 10 }}>
             <PulseIcon size={20} />
             <div>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "#FFFFFF", textTransform: "uppercase", letterSpacing: ".04em" }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nav-text)", textTransform: "uppercase", letterSpacing: ".04em" }}>
                 AR-InvestTech
               </div>
-              <div style={{ fontSize: 9, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".05em" }}>v1.0.0</div>
+              <div style={{ fontSize: 9, color: "var(--nav-text-dim)", textTransform: "uppercase", letterSpacing: ".05em" }}>v1.0.0</div>
             </div>
           </div>
 
@@ -286,9 +288,9 @@ export default function App() {
                 className="flex items-center gap-2.5 text-[13px] font-semibold text-left w-full"
                 style={{
                   padding: active ? "10px 16px 10px 13px" : "10px 16px",
-                  borderLeft: `3px solid ${active ? "#FFFFFF" : "transparent"}`,
-                  background: active ? "#1F2937" : "transparent",
-                  color: n.disabled ? "#4B5563" : active ? "#FFFFFF" : "#9CA3AF",
+                  borderLeft: `3px solid ${active ? "var(--nav-active-border)" : "transparent"}`,
+                  background: active ? "var(--nav-active-bg)" : "transparent",
+                  color: n.disabled ? "var(--nav-disabled)" : active ? "var(--nav-text)" : "var(--nav-item-text)",
                   cursor: n.disabled ? "not-allowed" : "pointer",
                   opacity: n.disabled ? 0.5 : 1,
                 }}>
@@ -301,20 +303,20 @@ export default function App() {
           <div style={{ flex: 1 }} />
 
           {/* Bot status */}
-          <div style={{ padding: "12px 16px", borderTop: "1px solid #1F2937" }}>
-            <div style={{ fontSize: 10, color: "#6B7280", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Bot Status</div>
+          <div style={{ padding: "12px 16px", borderTop: "1px solid var(--nav-border)" }}>
+            <div style={{ fontSize: 10, color: "var(--nav-text-dim)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Bot Status</div>
             <div className="flex items-center gap-1.5 font-semibold"
-                 style={{ fontSize: 12, color: running ? "#22C55E" : "#9CA3AF", marginBottom: 8 }}>
+                 style={{ fontSize: 12, color: running ? "#22C55E" : "var(--nav-item-text)", marginBottom: 8 }}>
               <span className="rounded-full" style={{
                 width: 7, height: 7,
-                ...(running ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" } : { background: "#6B7280" }),
+                ...(running ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" } : { background: "var(--nav-text-dim)" }),
               }} />
               {running ? "Running" : "Stopped"}
             </div>
             {running ? (
               <button onClick={handleToggleBot}
                 className="w-full flex items-center justify-center gap-1.5 rounded-md font-semibold"
-                style={{ background: "#1F2937", border: "1px solid #374151", color: "#F3F4F6", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
+                style={{ background: "var(--nav-stop-bg)", border: "1px solid var(--nav-stop-border)", color: "var(--nav-stop-text)", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
                 <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <rect x="6" y="6" width="12" height="12" />
                 </svg>
@@ -323,7 +325,7 @@ export default function App() {
             ) : (
               <button onClick={handleToggleBot}
                 className="w-full flex items-center justify-center gap-1.5 rounded-md font-bold"
-                style={{ background: "#FFFFFF", color: "#111827", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
+                style={{ background: "var(--nav-start-bg)", color: "var(--nav-start-text)", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
                 <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <polygon points="5 3 19 12 5 21 5 3" />
                 </svg>

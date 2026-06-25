@@ -4,12 +4,54 @@
 
 html, body, #__next { height: 100%; }
 
+/* ── Nav theme tokens (dark = default) ───────────────── */
+:root {
+  --nav-bg:             #111827;
+  --nav-text:           #FFFFFF;
+  --nav-text-dim:       #6B7280;
+  --nav-border:         #1F2937;
+  --nav-active-bg:      #1F2937;
+  --nav-active-border:  #FFFFFF;
+  --nav-item-text:      #9CA3AF;
+  --nav-disabled:       #4B5563;
+  --nav-stop-bg:        #1F2937;
+  --nav-stop-border:    #374151;
+  --nav-stop-text:      #F3F4F6;
+  --nav-start-bg:       #FFFFFF;
+  --nav-start-text:     #111827;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --nav-bg:             #FFFFFF;
+    --nav-text:           #111827;
+    --nav-text-dim:       #6B7280;
+    --nav-border:         #E5E7EB;
+    --nav-active-bg:      #F3F4F6;
+    --nav-active-border:  #111827;
+    --nav-item-text:      #374151;
+    --nav-disabled:       #9CA3AF;
+    --nav-stop-bg:        #F3F4F6;
+    --nav-stop-border:    #E5E7EB;
+    --nav-stop-text:      #111827;
+    --nav-start-bg:       #111827;
+    --nav-start-text:     #FFFFFF;
+  }
+}
+
+/* Background shown in safe-area regions (Dynamic Island, home indicator) */
+html { background: var(--nav-bg); }
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Inter", sans-serif;
-  background: #0e1117;
+  background: var(--nav-bg);
   color: #111827;
   height: 100%;
   overflow: hidden;
+  /* Push content below the Dynamic Island / notch and above the home indicator */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  transition: background 0.2s ease;
 }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -47,6 +89,10 @@ body {
 /* ── Activation card ─────────────────────────────── */
 .activation-card { padding: 36px 44px; }
 
+@media (max-width: 768px) {
+  .activation-card { padding: 28px 24px; }
+}
+
 /* ── Mobile utility classes ──────────────────────── */
 .mob-hide-inline { }
 .desk-hide       { display: none; }
@@ -61,7 +107,7 @@ body {
   html, body, #__next { height: auto; min-height: 100%; overflow-x: hidden; }
   body { overflow-y: auto; overflow-x: hidden; }
 
-  .app-root  { height: auto; min-height: 100vh; overflow-x: hidden; max-width: 100vw; }
+  .app-root  { height: auto; min-height: 100%; overflow-x: hidden; max-width: 100vw; }
   .app-shell { flex: none; min-height: 0; width: 100%; overflow-x: hidden; }
   .app-main  { flex: none; width: 100%; box-sizing: border-box; overflow-y: visible; overflow-x: hidden; padding: 14px; display: block; }
 
@@ -70,7 +116,8 @@ body {
   .burger-btn {
     display: flex; align-items: center; justify-content: center;
     background: transparent; border: none; cursor: pointer;
-    color: #FFFFFF; padding: 4px;
+    color: var(--nav-text); padding: 8px 10px;
+    transition: color 0.2s ease;
   }
 
   .drawer-overlay {
@@ -82,11 +129,11 @@ body {
 
   .mobile-drawer {
     display: flex; flex-direction: column;
-    position: fixed; top: 40px; left: 0; bottom: 0;
-    width: 240px; background: #111827;
+    position: fixed; top: calc(40px + env(safe-area-inset-top, 0px)); left: 0; bottom: 0;
+    width: 240px; background: var(--nav-bg);
     z-index: 50; padding: 16px 0;
     overflow-y: auto;
-    transition: transform .25s ease;
+    transition: transform .25s ease, background 0.2s ease;
   }
 
   .grid-4    { grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -104,12 +151,12 @@ body {
   .trade-cards { display: flex; flex-direction: column; gap: 8px; }
   .tbl-row     { min-width: 0; }
 
-  .toast-msg { bottom: 18px !important; }
+
 }
 
 @media (max-width: 480px) {
   .grid-3          { grid-template-columns: 1fr; }
-  .activation-card { padding: 28px 20px; }
+  .activation-card { padding: 24px 20px; }
   .app-main        { padding: 10px; }
   .grid-4          { gap: 6px; }
   .grid-2          { gap: 8px; }

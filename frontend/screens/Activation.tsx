@@ -36,9 +36,10 @@ export default function Activation({ onActivated, doValidate }: Props) {
   }, [key, loading, doValidate, onActivated]);
 
   return (
-    <div className="flex-1 flex items-center justify-center p-6 relative animate-fade"
-         style={{ background: "#111827" }}>
+    <div className="flex-1 flex flex-col animate-fade"
+         style={{ background: "#111827", padding: "20px 28px" }}>
 
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div className="activation-card" style={{
         background: "#1F2937",
         border: "1px solid #374151",
@@ -143,10 +144,9 @@ export default function Activation({ onActivated, doValidate }: Props) {
           Developed by DippsDev
         </div>
       </div>
-
-      <div style={{ position: "absolute", bottom: 16, right: 20, fontSize: 10, color: "#374151" }}>
-        v1.0.0
       </div>
+
+      <div style={{ fontSize: 10, color: "#374151", paddingTop: 8 }}>v1.0.0</div>
     </div>
   );
 }
