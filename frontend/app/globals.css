@@ -4,7 +4,7 @@
 
 html, body, #__next { height: 100%; }
 
-/* ── Nav theme tokens (dark = default) ───────────────── */
+/* ── Nav + Activation theme tokens (dark = default) ──── */
 :root {
   --nav-bg:             #111827;
   --nav-text:           #FFFFFF;
@@ -19,6 +19,15 @@ html, body, #__next { height: 100%; }
   --nav-stop-text:      #F3F4F6;
   --nav-start-bg:       #FFFFFF;
   --nav-start-text:     #111827;
+
+  --act-outer-bg:       #111827;
+  --act-card-bg:        #1F2937;
+  --act-border:         #374151;
+  --act-input-bg:       #111827;
+  --act-text:           #FFFFFF;
+  --act-text-sub:       #9CA3AF;
+  --act-text-dim:       #6B7280;
+  --act-divider:        #374151;
 }
 
 @media (prefers-color-scheme: light) {
@@ -36,6 +45,15 @@ html, body, #__next { height: 100%; }
     --nav-stop-text:      #111827;
     --nav-start-bg:       #111827;
     --nav-start-text:     #FFFFFF;
+
+    --act-outer-bg:       #F1F5F9;
+    --act-card-bg:        #FFFFFF;
+    --act-border:         #E5E7EB;
+    --act-input-bg:       #F9FAFB;
+    --act-text:           #111827;
+    --act-text-sub:       #6B7280;
+    --act-text-dim:       #9CA3AF;
+    --act-divider:        #E5E7EB;
   }
 }
 
@@ -58,6 +76,8 @@ body {
 ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 .dark-scroll::-webkit-scrollbar-thumb { background: #374151; }
+
+.act-input::placeholder { color: var(--act-text-dim); opacity: 1; }
 
 @keyframes arb-spin      { to { transform: rotate(360deg); } }
 @keyframes arb-fade      { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -130,6 +150,9 @@ body {
   .mobile-drawer {
     display: flex; flex-direction: column;
     position: fixed; top: calc(40px + env(safe-area-inset-top, 0px)); left: 0; bottom: 0;
+    /* explicit height so iOS doesn't collapse to content height */
+    height: calc(100vh  - 40px - env(safe-area-inset-top, 0px));
+    height: calc(100dvh - 40px - env(safe-area-inset-top, 0px));
     width: 240px; background: var(--nav-bg);
     z-index: 50; padding: 16px 0;
     overflow-y: auto;
