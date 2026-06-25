@@ -107,6 +107,7 @@ export default function App() {
   const inApp = screen !== "activation";
 
   return (
+    <>
     <div className="app-root" style={{ background: "#F9FAFB" }}>
 
       {/* ── Title bar ───────────────────────────────────────────────────────── */}
@@ -175,7 +176,6 @@ export default function App() {
 
       {/* ── App shell ───────────────────────────────────────────────────────── */}
       {inApp && (
-        <>
         <div className="app-shell">
 
           {/* Sidebar */}
@@ -278,11 +278,16 @@ export default function App() {
             </div>
           </main>
         </div>
+      )}
 
-        {/* Drawer overlay */}
+      <Toast message={toast} onDone={() => setToast(null)} />
+    </div>
+
+    {/* ── Drawer + overlay — rendered OUTSIDE app-root so overflow-x:hidden cannot clip them ── */}
+    {inApp && (
+      <>
         {menuOpen && <div className="drawer-overlay" onClick={() => setMenuOpen(false)} />}
 
-        {/* Slide-in drawer — mobile only */}
         <div className="mobile-drawer" style={{ transform: menuOpen ? "translateX(0)" : "translateX(-100%)", color: "var(--nav-text)" }}>
 
           {/* Brand */}
@@ -353,11 +358,9 @@ export default function App() {
             )}
           </div>
         </div>
-        </>
-      )}
-
-      <Toast message={toast} onDone={() => setToast(null)} />
-    </div>
+      </>
+    )}
+    </>
   );
 }
 
