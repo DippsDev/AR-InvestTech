@@ -149,12 +149,12 @@ body {
 
   .mobile-drawer {
     display: flex; flex-direction: column;
-    position: fixed; top: calc(40px + env(safe-area-inset-top, 0px)); left: 0; bottom: 0;
-    /* explicit height so iOS doesn't collapse to content height */
-    height: calc(100vh  - 40px - env(safe-area-inset-top, 0px));
-    height: calc(100dvh - 40px - env(safe-area-inset-top, 0px));
+    position: fixed; top: 0; left: 0; bottom: 0;
+    height: 100vh;
+    height: 100dvh;
     width: 240px; background: var(--nav-bg);
     z-index: 50; padding: 16px 0;
+    padding-top: calc(16px + env(safe-area-inset-top, 0px));
     overflow-y: auto;
     transition: transform .25s ease, background 0.2s ease;
   }
