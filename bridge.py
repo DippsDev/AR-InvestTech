@@ -280,12 +280,12 @@ class BotBridge:
         return {
             "login":      str(config.MT5_LOGIN),
             "server":     config.MT5_SERVER,
-            "risk_pct":   "1.0",
-            "daily_cap":  "3.0",
-            "max_trades": "1",
-            "trail":      True,
-            "bias":       False,
-            "news":       False,
+            "risk_pct":   config.SB_RISK_PCT,
+            "daily_cap":  config.SB_DAILY_CAP,
+            "max_trades": config.SB_MAX_TRADES,
+            "trail":      config.SB_TRAIL,
+            "bias":       config.SB_BIAS,
+            "news":       config.SB_NEWS,
         }
 
     def save_settings(self, data: dict) -> dict:
@@ -298,9 +298,24 @@ class BotBridge:
                 if line and not line.startswith("#") and "=" in line:
                     k, v = line.split("=", 1)
                     env[k.strip()] = v.strip()
-            if "login"  in data: env["MT5_LOGIN"]  = str(data["login"])
-            if "server" in data: env["MT5_SERVER"] = str(data["server"])
+            mapping = {
+                "login":      "MT5_LOGIN",
+                "server":     "MT5_SERVER",
+                "risk_pct":   "SB_RISK_PCT",
+                "daily_cap":  "SB_DAILY_CAP",
+                "max_trades": "SB_MAX_TRADES",
+                "trail":      "SB_TRAIL",
+                "bias":       "SB_BIAS",
+                "news":       "SB_NEWS",
+            }
+            for field, env_key in mapping.items():
+                if field in data:
+                    val = data[field]
+                    env[env_key] = str(val).lower() if isinstance(val, bool) else str(val)
             env_path.write_text("\n".join(f"{k}={v}" for k, v in env.items()), encoding="utf-8")
+            # Reload config so next get_settings() call reflects the saved values
+            import importlib, config as cfg
+            importlib.reload(cfg)
             return {"ok": True}
         except Exception as exc:
             return {"ok": False, "error": str(exc)}

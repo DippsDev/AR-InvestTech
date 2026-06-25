@@ -101,8 +101,8 @@ export default function Settings({ onSave, doLoad, connected, server }: Props) {
         </div>
         <div style={{ padding: 16 }}>
           <div className="grid-mt5">
-            {fld("login",  "Account Login", "50213394")}
-            {fld("server", "Server",        "ICMarketsSC-Live07")}
+            {fld("login",  "Account Login", "e.g. 436343528")}
+            {fld("server", "Server",        "e.g. Exness-MT5Trail9")}
           </div>
           <div style={{ gridColumn: "span 2", display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginTop: 12 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: connected ? "#16A34A" : "#D1D5DB", display: "inline-block" }} />

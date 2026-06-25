@@ -1,13 +1,11 @@
 "use client";
 import { useState } from "react";
-import type { LogEntry } from "@/lib/api";
+import type { LogEntry, Stats } from "@/lib/api";
 
 interface Props {
   running: boolean;
   log: LogEntry[];
-  tick: number;
-  floatPnl: string;
-  nextRefresh: string;
+  stats: Stats | null;
 }
 
 function Card({ label, value, note, noteGreen }: { label: string; value: string; note?: string; noteGreen?: boolean }) {
@@ -48,18 +46,17 @@ function CompressIcon() {
   );
 }
 
-export default function Dashboard({ running, log, tick, floatPnl, nextRefresh }: Props) {
+export default function Dashboard({ running, log, stats }: Props) {
   const [logExpanded, setLogExpanded] = useState(false);
 
-  const now = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  const now  = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
   const clock = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
   const logReversed = [...log].reverse();
 
-  const equity = running
-    ? `$4,2${(37 + (tick % 12)).toString()}.00`
-    : "$4,208.60";
+  const openTrade = stats?.open_trade ?? null;
+  const hasOpenTrade = openTrade != null;
 
-  const openPillStyle = running
+  const openPillStyle = hasOpenTrade
     ? { color: "#16A34A", background: "#DCFCE7", padding: "2px 8px", borderRadius: 4 }
     : { color: "#6B7280", background: "#F3F4F6", padding: "2px 8px", borderRadius: 4 };
 
@@ -86,6 +83,8 @@ export default function Dashboard({ running, log, tick, floatPnl, nextRefresh }:
         minHeight: 0,
       };
 
+  const pnlIsPositive = !stats?.profit.startsWith("-");
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14, minHeight: "calc(100svh - 80px)" }}>
 
@@ -93,20 +92,20 @@ export default function Dashboard({ running, log, tick, floatPnl, nextRefresh }:
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>Dashboard</div>
-          <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{now} — London Session Active</div>
+          <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{now} — {stats?.session ?? "—"}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#6B7280" }}>
           <span style={{ background: "#111827", color: "#FFFFFF", padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: ".05em" }}>US30</span>
-          <span className="mob-hide-inline">MT5 Connected · {clock}</span>
+          <span className="mob-hide-inline">{stats?.connected ? "MT5 Connected" : "MT5 Disconnected"} · {clock}</span>
         </div>
       </div>
 
       {/* Stat cards */}
       <div className="grid-4">
-        <Card label="Balance"     value="$4,208.60" note={`Equity ${equity}`} />
-        <Card label="Today P&L"   value="+$84.50"   note="▲ +2.01%" noteGreen />
-        <Card label="Win Rate"    value="68%"        note="Last 30 days" />
-        <Card label="Open Trades" value={running ? "1" : "0"} note="Max 2 allowed" />
+        <Card label="Balance"     value={stats?.balance ?? "--"}      note={stats ? `Equity ${stats.equity}` : undefined} />
+        <Card label="Today P&L"   value={stats?.profit  ?? "--"}      noteGreen={pnlIsPositive} />
+        <Card label="Win Rate"    value="—"                            note="Calculating…" />
+        <Card label="Open Trades" value={stats?.open_trades ?? "0"}   note="Max 2 allowed" />
       </div>
 
       {/* Active trade + Session info */}
@@ -116,34 +115,36 @@ export default function Dashboard({ running, log, tick, floatPnl, nextRefresh }:
         <div style={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden" }}>
           <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <span style={{ fontSize: 12, fontWeight: 600, color: "#111827", textTransform: "uppercase", letterSpacing: ".05em" }}>Active Trade</span>
-            <span style={{ fontSize: 11, fontWeight: 600, ...openPillStyle }}>{running ? "OPEN" : "FLAT"}</span>
+            <span style={{ fontSize: 11, fontWeight: 600, ...openPillStyle }}>{hasOpenTrade ? "OPEN" : "FLAT"}</span>
           </div>
           <div style={{ padding: "14px 16px" }}>
-            {running ? (
+            {hasOpenTrade ? (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 10px", fontSize: 12 }}>
                   <div>
                     <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Symbol / Side</div>
-                    <div style={{ fontWeight: 600, color: "#111827" }}>US30 · <span style={{ color: "#16A34A" }}>BUY</span></div>
+                    <div style={{ fontWeight: 600, color: "#111827" }}>
+                      {openTrade.symbol} · <span style={{ color: openTrade.side === "BUY" ? "#16A34A" : "#DC2626" }}>{openTrade.side}</span>
+                    </div>
                   </div>
                   <div>
                     <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Float P&L</div>
-                    <div style={{ fontWeight: 700, color: "#16A34A" }}>{floatPnl}</div>
+                    <div style={{ fontWeight: 700, color: openTrade.float_pnl.startsWith("-") ? "#DC2626" : "#16A34A" }}>{openTrade.float_pnl}</div>
                   </div>
                   <div>
                     <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Entry</div>
-                    <div style={{ fontWeight: 600, color: "#111827" }}>42,318.4</div>
+                    <div style={{ fontWeight: 600, color: "#111827" }}>{openTrade.entry}</div>
                   </div>
                   <div>
                     <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Stop / Target</div>
                     <div style={{ fontWeight: 600 }}>
-                      <span style={{ color: "#DC2626" }}>42,288.4</span> / <span style={{ color: "#16A34A" }}>42,368.4</span>
+                      <span style={{ color: "#DC2626" }}>{openTrade.sl}</span> / <span style={{ color: "#16A34A" }}>{openTrade.tp}</span>
                     </div>
                   </div>
                 </div>
                 <div style={{ marginTop: 12, fontSize: 11, color: "#6B7280", display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FBBF24", display: "inline-block" }} />
-                  Breakeven set · Trailing active · Lot 0.08 · US30
+                  {openTrade.breakeven ? "Breakeven set · " : ""}Lot {openTrade.lots} · {openTrade.symbol}
                 </div>
               </>
             ) : (
@@ -152,7 +153,7 @@ export default function Dashboard({ running, log, tick, floatPnl, nextRefresh }:
                   <circle cx="12" cy="12" r="9" /><path d="M12 8v4l2.5 1.5" />
                 </svg>
                 <div style={{ fontSize: 12, fontWeight: 600, color: "#6B7280" }}>No open positions</div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>Start the bot to begin scanning for signals</div>
+                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>{running ? "Scanning for signals…" : "Start the bot to begin scanning for signals"}</div>
               </div>
             )}
           </div>
@@ -166,12 +167,12 @@ export default function Dashboard({ running, log, tick, floatPnl, nextRefresh }:
           <div style={{ padding: "14px 16px" }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12 }}>
               {([
-                ["Session",        "London",          ""],
-                ["Timeframes",     "M5 / H1",         ""],
-                ["AI Signal",      "BULLISH",         "#16A34A"],
-                ["Daily Cap Used", "1.01% / 3%",      ""],
-                ["Risk / Trade",   "1%",              ""],
-                ["Next AI Refresh", nextRefresh,      ""],
+                ["Session",         stats?.session        ?? "--", ""],
+                ["Timeframes",      "M5 / H1",                    ""],
+                ["Strategy",        "Silver Bullet",               "#16A34A"],
+                ["Daily Cap Used",  stats?.daily_cap_used ?? "--", ""],
+                ["Risk / Trade",    "1%",                          ""],
+                ["Next Refresh",    stats?.next_refresh   ?? "--", ""],
               ] as [string, string, string][]).map(([lbl, val, color]) => (
                 <div key={lbl}>
                   <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>{lbl}</div>
@@ -185,7 +186,6 @@ export default function Dashboard({ running, log, tick, floatPnl, nextRefresh }:
 
       {/* Live log */}
       <div className={logExpanded ? "log-expand-anim" : undefined} style={logCardStyle}>
-        {/* Header — clicking anywhere here toggles expand */}
         <div
           onClick={() => setLogExpanded(e => !e)}
           style={{
@@ -207,8 +207,6 @@ export default function Dashboard({ running, log, tick, floatPnl, nextRefresh }:
             </span>
           </div>
         </div>
-
-        {/* Log content — fills remaining height */}
         <div className="dark-scroll" style={{
           fontFamily: "ui-monospace, Consolas, monospace",
           fontSize: 11,
@@ -220,13 +218,17 @@ export default function Dashboard({ running, log, tick, floatPnl, nextRefresh }:
           lineHeight: 1.7,
           minHeight: 0,
         }}>
-          {logReversed.map((e, i) => (
-            <div key={i} className="animate-row-in">
-              <span style={{ color: "#6B7280" }}>{e.t}</span>{" "}
-              <span style={{ fontWeight: 600, color: tagColor(e.k) }}>{e.tag}</span>{" "}
-              {e.x}
-            </div>
-          ))}
+          {logReversed.length === 0 ? (
+            <span style={{ color: "#4B5563" }}>Waiting for bot activity…</span>
+          ) : (
+            logReversed.map((e, i) => (
+              <div key={i} className="animate-row-in">
+                <span style={{ color: "#6B7280" }}>{e.t}</span>{" "}
+                <span style={{ fontWeight: 600, color: tagColor(e.k) }}>{e.tag}</span>{" "}
+                {e.x}
+              </div>
+            ))
+          )}
         </div>
       </div>
 

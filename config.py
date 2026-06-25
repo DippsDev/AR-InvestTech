@@ -12,6 +12,14 @@ MT5_SERVER   = os.getenv("MT5_SERVER", "")
 # Set SB_SYMBOL in .env if your broker uses a different name (e.g. US30Cash, #US30, DJ30)
 SB_SYMBOL = os.getenv("SB_SYMBOL", "US30")
 
+# Risk parameters (editable via Settings page)
+SB_RISK_PCT   = os.getenv("SB_RISK_PCT",   "1.0")
+SB_DAILY_CAP  = os.getenv("SB_DAILY_CAP",  "3.0")
+SB_MAX_TRADES = os.getenv("SB_MAX_TRADES", "1")
+SB_TRAIL      = os.getenv("SB_TRAIL",      "true").lower() == "true"
+SB_BIAS       = os.getenv("SB_BIAS",       "false").lower() == "true"
+SB_NEWS       = os.getenv("SB_NEWS",       "false").lower() == "true"
+
 # Logging
 LOG_FILE  = "logs/trades.log"
 LOG_LEVEL = "INFO"

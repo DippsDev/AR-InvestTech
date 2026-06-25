@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback } from "react";
-import { mockApi, type Trade, type Settings, type LogEntry, INITIAL_LOG, ALL_TRADES } from "@/lib/api";
+import { mockApi, type Stats, type Trade, type Settings, type LogEntry } from "@/lib/api";
 import Activation   from "@/screens/Activation";
 import Dashboard    from "@/screens/Dashboard";
 import Trades       from "@/screens/Trades";
@@ -18,11 +18,11 @@ const NAV: { id: Exclude<Screen, "activation">; label: string; disabled?: boolea
 ];
 
 export default function App() {
-  const [screen,    setScreen]    = useState<Screen>("activation");
-  const [running,   setRunning]   = useState(true);
-  const [tick,      setTick]      = useState(0);
-  const [log,       setLog]       = useState<LogEntry[]>(INITIAL_LOG);
-  const [trades,    setTrades]    = useState<Trade[]>(ALL_TRADES);
+  const [screen,    setScreen]    = useState<Screen>("dashboard");
+  const [running,   setRunning]   = useState(false);
+  const [stats,     setStats]     = useState<Stats | null>(null);
+  const [log,       setLog]       = useState<LogEntry[]>([]);
+  const [trades,    setTrades]    = useState<Trade[]>([]);
   const [toast,     setToast]     = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [server,    setServer]    = useState("");
@@ -36,42 +36,59 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (screen === "activation") return;
-    let t = 0;
-    const timer = setInterval(() => {
-      t++;
-      setTick(t);
-      if (t % 4 === 0) {
-        const now = new Date().toTimeString().slice(0, 8);
-        const pool: LogEntry[] = [
-          { t: now, tag: "[TICK]", k: "inf", x: `US30 ${(42318 + (Math.random() * 20 - 10)).toFixed(1)} · spread 1.8` },
-          { t: now, tag: "[INFO]", k: "inf", x: `US30 trailing stop raised · +${18 + (t % 100)} pts floating` },
-          { t: now, tag: "[SCAN]", k: "sig", x: "US30 · no new setup · momentum neutral on H1" },
-        ];
-        const e = pool[Math.floor(Math.random() * pool.length)];
-        setLog(prev => [...prev, e].slice(-40));
-      }
-    }, 1500);
-    return () => clearInterval(timer);
-  }, [screen]);
+    mockApi.connectMt5().then(r => {
+      if (r.ok) { setConnected(true); setServer(r.server ?? ""); }
+    }).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    const pollStats = async () => {
+      try {
+        const s = await mockApi.getStats();
+        setStats(s);
+        setRunning(s.running);
+        setConnected(s.connected);
+      } catch {}
+    };
+
+    const pollLog = async () => {
+      try {
+        const entries = await mockApi.getLog();
+        setLog(entries);
+      } catch {}
+    };
+
+    pollStats();
+    pollLog();
+
+    const statsTimer = setInterval(pollStats, 5000);
+    const logTimer   = setInterval(pollLog,   3000);
+    return () => { clearInterval(statsTimer); clearInterval(logTimer); };
+  }, []);
 
   const handleActivated = useCallback(async () => {
     try {
       const r = await mockApi.connectMt5();
-      if (r.ok) { setConnected(true); setServer(r.server ?? ""); }
-    } catch {}
+      if (r.ok) {
+        setConnected(true);
+        setServer(r.server ?? "");
+      } else {
+        showToast(r.error ?? "MT5 connection failed — check MetaTrader is open");
+      }
+    } catch {
+      showToast("Backend not reachable — run: python server.py");
+    }
     setScreen("dashboard");
-  }, []);
+  }, [showToast]);
 
-  const handleToggleBot = useCallback(() => {
-    const next = !running;
-    setRunning(next);
-    const now = new Date().toTimeString().slice(0, 8);
-    const entry: LogEntry = next
-      ? { t: now, tag: "[START]", k: "win", x: "Bot started · scanning US30 for setups" }
-      : { t: now, tag: "[STOP]",  k: "inf", x: "Bot stopped by user · positions held" };
-    setLog(prev => [...prev, entry].slice(-40));
-    showToast(next ? "Bot started" : "Bot stopped");
+  const handleToggleBot = useCallback(async () => {
+    try {
+      const r = running ? await mockApi.stopBot() : await mockApi.startBot();
+      setRunning(r.running);
+      showToast(r.running ? "Bot started" : "Bot stopped");
+    } catch {
+      showToast("Failed — is python server.py running?");
+    }
   }, [running, showToast]);
 
   const handleSaveSettings = useCallback(async (data: Settings) => {
@@ -87,8 +104,6 @@ export default function App() {
     if (s === "trades") mockApi.getTrades().then(setTrades).catch(() => {});
   }, []);
 
-  const floatPnl = `+$${(28.4 + (tick % 12) * 1.6).toFixed(2)}`;
-  const nextRefresh = `${Math.max(0, Math.round(60 - (tick * 1.5) % 60))}s`;
   const inApp = screen !== "activation";
 
   return (
@@ -249,7 +264,7 @@ export default function App() {
           {/* Main */}
           <main className="app-main">
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {screen === "dashboard"   && <Dashboard running={running} log={log} tick={tick} floatPnl={floatPnl} nextRefresh={nextRefresh} />}
+              {screen === "dashboard"   && <Dashboard running={running} log={log} stats={stats} />}
               {screen === "trades"      && <Trades trades={trades} filter={tFilter} onFilter={setTFilter} />}
               {screen === "performance" && <Performance range={range} onRange={setRange} />}
               {screen === "settings"    && (
