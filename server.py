@@ -97,6 +97,8 @@ class SettingsBody(BaseModel):
     trail: bool = True
     bias: bool = False
     news: bool = False
+    aggressive: bool = False
+    off_hours:  bool = False
 
 @app.post("/settings")
 def save_settings(body: SettingsBody):

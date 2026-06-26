@@ -51,6 +51,8 @@ export interface Settings {
   trail: boolean;
   bias: boolean;
   news: boolean;
+  aggressive: boolean;
+  off_hours:  boolean;
 }
 
 export const mockApi = {

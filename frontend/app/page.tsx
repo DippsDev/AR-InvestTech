@@ -91,6 +91,8 @@ export default function App() {
     }
   }, [running, showToast]);
 
+  const handleLoadSettings = useCallback(() => mockApi.getSettings(), []);
+
   const handleSaveSettings = useCallback(async (data: Settings) => {
     try {
       const r = await mockApi.saveSettings(data);
@@ -270,7 +272,7 @@ export default function App() {
               {screen === "settings"    && (
                 <SettingsPage
                   onSave={handleSaveSettings}
-                  doLoad={() => mockApi.getSettings()}
+                  doLoad={handleLoadSettings}
                   connected={connected}
                   server={server}
                 />

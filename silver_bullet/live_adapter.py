@@ -49,6 +49,11 @@ class SilverBulletLiveAdapter:
         self._open_fill_price: Optional[float] = None
         self._breakeven_triggered: bool = False
         self._trail_best_price: Optional[float] = None
+        # Off-hours tracking
+        self._pending_is_off_hours: bool = False
+        self._open_is_off_hours: bool = False
+        self._off_hours_fills: int = 0
+        self._off_hours_date: str = ""
 
     # ------------------------------------------------------------------
     # Public API
@@ -77,40 +82,74 @@ class SilverBulletLiveAdapter:
         # 1. Check if pending order was filled by MT5
         self._sync_fill_status(symbol)
 
-        # 2. Determine whether we are currently inside any Silver Bullet window
+        # 2. Determine session context
         last_ny = times[-1].astimezone(NY_TZ)
         in_window, _ = self._window_at(last_ny)
+        past_cutoff  = self._is_cutoff(last_ny)
+        in_off_hours = self._cfg.off_hours_trading and not in_window and not past_cutoff
+
+        # Reset daily off-hours fill counter at day change
+        today_ny = datetime.now(NY_TZ).date().isoformat()
+        if today_ny != self._off_hours_date:
+            self._off_hours_date  = today_ny
+            self._off_hours_fills = 0
 
         # 3. Manage open position
         if self._open_ticket is not None:
             self._sync_position(symbol)
             if self._open_ticket is not None:
                 self._check_breakeven(symbol)
-            if self._open_ticket is not None and not in_window:
-                self._time_exit(symbol)
+            if self._open_ticket is not None:
+                # Regular-window trade: close when window ends.
+                # Off-hours trade: close at daily cutoff.
+                should_exit = (
+                    (not self._open_is_off_hours and not in_window) or
+                    (self._open_is_off_hours and past_cutoff)
+                )
+                if should_exit:
+                    self._time_exit(symbol)
             return
 
         # 4. Manage pending order
         if self._pending_ticket is not None:
-            if not in_window:
+            should_cancel = (
+                (not self._pending_is_off_hours and not in_window) or
+                (self._pending_is_off_hours and past_cutoff)
+            )
+            if should_cancel:
                 self._cancel_pending()
             return
 
         # 5. Feed unprocessed bars through the signal generator
-        today_ny = datetime.now(NY_TZ).date().isoformat()
-
         for i, ts in enumerate(times):
             if self._last_bar_time is not None and ts <= self._last_bar_time:
                 continue
 
-            ts_ny = ts.astimezone(NY_TZ)
-            bar_in_win, bar_wid = self._window_at(ts_ny)
+            ts_ny    = ts.astimezone(NY_TZ)
             date_str = ts_ny.date().isoformat()
 
+            bar_in_reg, bar_wid = self._window_at(ts_ny)
+            bar_off_hrs = (
+                self._cfg.off_hours_trading
+                and not bar_in_reg
+                and not self._is_cutoff(ts_ny)
+            )
+            bar_in_win = bar_in_reg or bar_off_hrs
+
+            # Off-hours window ID: 100 + hour gives each clock-hour its own
+            # fresh sweep/FVG session so the signal generator starts clean.
+            if bar_in_reg:
+                effective_wid = bar_wid
+            elif bar_off_hrs:
+                effective_wid = 100 + ts_ny.hour
+            else:
+                effective_wid = 0
+
             if bar_in_win:
+                label = f"off-hrs h{ts_ny.hour}" if bar_off_hrs else f"w{effective_wid}"
                 logger.info(
                     f"[SB] Scanning | {ts_ny.strftime('%H:%M')} NY | "
-                    f"w{bar_wid} | {'init' if not self._initialized else 'live'}"
+                    f"{label} | {'init' if not self._initialized else 'live'}"
                 )
 
             signal = self._generator.on_bar(
@@ -120,16 +159,22 @@ class SilverBulletLiveAdapter:
                 closes=closes,
                 opens=opens,
                 in_window=bar_in_win,
-                window_id=bar_wid if bar_wid is not None else 0,
+                window_id=effective_wid,
                 date_str=date_str,
             )
 
-            # Act only after initialisation, and only on today's signals
+            # Act only after initialisation and only on today's signals
             if signal is not None and self._initialized and date_str == today_ny:
+                if bar_off_hrs and self._off_hours_fills >= self._cfg.off_hours_max_trades:
+                    logger.info(
+                        f"[SB] Off-hours cap ({self._cfg.off_hours_max_trades}) reached — skipping"
+                    )
+                    continue
                 lots = self._compute_lots(symbol, signal)
                 if lots is not None:
                     self._place_limit(symbol, signal, lots)
-                    self._open_signal = signal
+                    self._open_signal          = signal
+                    self._pending_is_off_hours = bar_off_hrs
                 break  # one pending order per cycle
             elif signal is not None:
                 logger.info(
@@ -181,14 +226,18 @@ class SilverBulletLiveAdapter:
         positions = mt5.positions_get(symbol=symbol) or []
         for pos in positions:
             if pos.magic == SB_MAGIC:
-                self._open_ticket = pos.ticket
-                self._open_fill_price = pos.price_open
+                self._open_ticket        = pos.ticket
+                self._open_fill_price    = pos.price_open
                 self._breakeven_triggered = False
-                self._trail_best_price = None
+                self._trail_best_price   = None
+                self._open_is_off_hours  = self._pending_is_off_hours
+                if self._pending_is_off_hours:
+                    self._off_hours_fills += 1
                 self._pending_ticket = None
+                label = " [off-hours]" if self._open_is_off_hours else ""
                 logger.info(
                     f"[SB] Limit filled → position #{pos.ticket} "
-                    f"@ {pos.price_open:.2f}"
+                    f"@ {pos.price_open:.2f}{label}"
                 )
                 return
 
@@ -204,11 +253,12 @@ class SilverBulletLiveAdapter:
         if not positions:
             from src.logger import logger
             logger.info(f"[SB] Position #{self._open_ticket} closed by MT5 (SL/TP)")
-            self._open_ticket = None
-            self._open_signal = None
-            self._open_fill_price = None
+            self._open_ticket         = None
+            self._open_signal         = None
+            self._open_fill_price     = None
             self._breakeven_triggered = False
-            self._trail_best_price = None
+            self._trail_best_price    = None
+            self._open_is_off_hours   = False
 
     def _check_breakeven(self, symbol: str) -> None:
         """Move stop to entry at breakeven_r; then trail at trail_r beyond that."""
@@ -385,11 +435,12 @@ class SilverBulletLiveAdapter:
 
         if result.retcode == mt5.TRADE_RETCODE_DONE:
             logger.info(f"[SB] Time exit | #{pos.ticket} | PnL ${pos.profit:.2f}")
-            self._open_ticket = None
-            self._open_signal = None
-            self._open_fill_price = None
+            self._open_ticket         = None
+            self._open_signal         = None
+            self._open_fill_price     = None
             self._breakeven_triggered = False
-            self._trail_best_price = None
+            self._trail_best_price    = None
+            self._open_is_off_hours   = False
         else:
             logger.error(
                 f"[SB] Time exit failed | code={result.retcode} | {result.comment}"
@@ -408,6 +459,11 @@ class SilverBulletLiveAdapter:
                 return True, wid
         return False, None
 
+    def _is_cutoff(self, ts_ny: datetime) -> bool:
+        """True once we've passed the off-hours daily close time."""
+        h, m = map(int, self._cfg.off_hours_close_time.split(":"))
+        return ts_ny.time() >= dtime(h, m)
+
     def _compute_lots(self, symbol: str, signal: Signal) -> Optional[float]:
         from src.logger import logger
 
@@ -421,7 +477,7 @@ class SilverBulletLiveAdapter:
             return None
 
         risk_usd  = account.balance * 0.01   # 1% risk per trade
-        risk_pts  = signal.risk_points        # price points from entry to stop
+        risk_pts  = abs(signal.entry_price - signal.stop_price)
         tick_val  = sym_info.trade_tick_value
         tick_size = sym_info.trade_tick_size
 

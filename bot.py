@@ -15,7 +15,19 @@ from src.logger import logger
 
 class SilverBulletBot:
     def __init__(self, gui_mode: bool = False):
-        self.adapter = SilverBulletLiveAdapter(SilverBulletConfig())
+        cfg = SilverBulletConfig()
+        if config.SB_AGGRESSIVE:
+            cfg.one_trade_per_window = False
+            cfg.fvg_min_points = 3.0
+            cfg.min_risk_points = 2.0
+            # Prepend London session windows (03:00–05:00 ET) for extra setups
+            cfg.windows = [
+                ("03:00", "04:00"), ("04:00", "05:00"),
+                ("10:00", "11:00"), ("11:00", "12:00"), ("13:30", "14:30"),
+            ]
+        if config.SB_OFF_HOURS:
+            cfg.off_hours_trading = True
+        self.adapter = SilverBulletLiveAdapter(cfg)
         self.running = False
         self._gui_mode = gui_mode  # when True, bridge owns MT5 — skip disconnect on shutdown
 

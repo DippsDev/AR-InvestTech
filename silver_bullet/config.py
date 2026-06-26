@@ -30,7 +30,7 @@ class SilverBulletConfig:
     # "near_edge" : first edge price touches on retrace (conservative fill rate)
     # "mid"       : midpoint of the gap
     # "far_edge"  : deepest edge of the gap
-    entry_in_fvg: str = "mid"
+    entry_in_fvg: str = "near_edge"
 
     # ── Stop loss ─────────────────────────────────────────────────────────────
     stop_buffer_points: float = 1.0
@@ -40,6 +40,14 @@ class SilverBulletConfig:
     # "opposite_liquidity": nearest confirmed swing on the other side
     target_mode: str = "opposite_liquidity"
     rr: float = 2.0
+
+    # ── Off-hours trading ─────────────────────────────────────────────────────
+    # Scan for setups outside the defined session windows.
+    # Each clock-hour becomes its own synthetic window (fresh sweep+FVG state).
+    # Positions are force-closed at off_hours_close_time instead of window end.
+    off_hours_trading: bool = False
+    off_hours_max_trades: int = 3        # fills allowed per calendar day
+    off_hours_close_time: str = "17:00"  # ET — force-close before this hour
 
     # ── Trade management ──────────────────────────────────────────────────────
     one_trade_per_window: bool = True

@@ -19,6 +19,10 @@ SB_MAX_TRADES = os.getenv("SB_MAX_TRADES", "1")
 SB_TRAIL      = os.getenv("SB_TRAIL",      "true").lower() == "true"
 SB_BIAS       = os.getenv("SB_BIAS",       "false").lower() == "true"
 SB_NEWS       = os.getenv("SB_NEWS",       "false").lower() == "true"
+# Aggressive mode: lower signal filters + extra windows to target 2–3 trades/day
+SB_AGGRESSIVE = os.getenv("SB_AGGRESSIVE", "false").lower() == "true"
+# Off-hours mode: scan and trade outside defined session windows (max 3 fills/day, closes 17:00 ET)
+SB_OFF_HOURS  = os.getenv("SB_OFF_HOURS",  "false").lower() == "true"
 
 # Logging
 LOG_FILE  = "logs/trades.log"

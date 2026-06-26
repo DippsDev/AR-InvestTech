@@ -177,12 +177,16 @@ class BotBridge:
             next_refresh = f"{max(1, int(30 - elapsed))}s"
 
         try:
+            import config as _cfg
             from zoneinfo import ZoneInfo
             ny_h = datetime.now(ZoneInfo("America/New_York")).hour
-            if 10 <= ny_h < 11:   session = "NY 10–11 (Active)"
-            elif 11 <= ny_h < 12: session = "NY 11–12 (Active)"
-            elif 13 <= ny_h < 14: session = "NY 13–14 (Active)"
-            else:                  session = "Off-Hours"
+            if _cfg.SB_AGGRESSIVE and 3 <= ny_h < 4:          session = "London 03–04 (Active)"
+            elif _cfg.SB_AGGRESSIVE and 4 <= ny_h < 5:        session = "London 04–05 (Active)"
+            elif 10 <= ny_h < 11:                              session = "NY 10–11 (Active)"
+            elif 11 <= ny_h < 12:                              session = "NY 11–12 (Active)"
+            elif 13 <= ny_h < 14:                              session = "NY 13–14 (Active)"
+            elif _cfg.SB_OFF_HOURS and ny_h < 17:             session = "Off-Hours (Active)"
+            else:                                              session = "Off-Hours"
         except Exception:
             session = "--"
 
@@ -286,6 +290,8 @@ class BotBridge:
             "trail":      config.SB_TRAIL,
             "bias":       config.SB_BIAS,
             "news":       config.SB_NEWS,
+            "aggressive": config.SB_AGGRESSIVE,
+            "off_hours":  config.SB_OFF_HOURS,
         }
 
     def save_settings(self, data: dict) -> dict:
@@ -307,6 +313,8 @@ class BotBridge:
                 "trail":      "SB_TRAIL",
                 "bias":       "SB_BIAS",
                 "news":       "SB_NEWS",
+                "aggressive": "SB_AGGRESSIVE",
+                "off_hours":  "SB_OFF_HOURS",
             }
             for field, env_key in mapping.items():
                 if field in data:
