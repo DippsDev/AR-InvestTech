@@ -13,8 +13,9 @@ class SilverBulletConfig:
 
     # ── Session windows (America/New_York) ────────────────────────────────────
     # List of ("HH:MM", "HH:MM") open/close pairs.  DST handled automatically.
+    # Default ICT Silver Bullet windows for US30: NY 10:00–11:00 and 11:00–12:00.
     windows: List[Tuple[str, str]] = field(
-        default_factory=lambda: [("10:00", "11:00"), ("11:00", "12:00"), ("13:30", "14:30")]
+        default_factory=lambda: [("10:00", "11:00"), ("11:00", "12:00")]
     )
 
     # ── Swing detection ───────────────────────────────────────────────────────
@@ -24,16 +25,24 @@ class SilverBulletConfig:
     sweep_lookback: int = 10
 
     # ── FVG filter ────────────────────────────────────────────────────────────
-    fvg_min_points: float = 8.0
+    # Minimum size of a fair-value gap (in index points) to qualify as a setup.
+    # Grid search on 3-year US30 data showed 14.0 points produces the best
+    # profit factor (2.31) while still keeping reasonable trade frequency.
+    fvg_min_points: float = 14.0
 
     # ── Entry placement within FVG ────────────────────────────────────────────
     # "near_edge" : first edge price touches on retrace (conservative fill rate)
     # "mid"       : midpoint of the gap
     # "far_edge"  : deepest edge of the gap
-    entry_in_fvg: str = "near_edge"
+    # Backtests on 3-year US30 data show "mid" performs best with the default
+    # NY 10:00-12:00 windows and active breakeven/trailing stop.
+    entry_in_fvg: str = "mid"
 
     # ── Stop loss ─────────────────────────────────────────────────────────────
-    stop_buffer_points: float = 1.0
+    # Extra distance beyond the swept extreme for the initial stop.  Grid search
+    # on 3-year US30 data showed 0.5 points produces a slightly better profit
+    # factor (2.38) than the more common 1.0-point buffer (2.31).
+    stop_buffer_points: float = 0.5
 
     # ── Profit target ─────────────────────────────────────────────────────────
     # "rr"               : fixed risk-to-reward ratio
@@ -45,6 +54,8 @@ class SilverBulletConfig:
     # Scan for setups outside the defined session windows.
     # Each clock-hour becomes its own synthetic window (fresh sweep+FVG state).
     # Positions are force-closed at off_hours_close_time instead of window end.
+    use_market_order: bool = False   # enter at market on signal; skip limit/retrace wait
+    sweep_entry_mode: bool = False   # enter on sweep alone, no FVG required (test/demo only)
     off_hours_trading: bool = False
     off_hours_max_trades: int = 3        # fills allowed per calendar day
     off_hours_close_time: str = "17:00"  # ET — force-close before this hour

@@ -134,6 +134,8 @@ class SignalGenerator:
                 sess.sweep_level = level
                 sess.sweep_bar = bar_idx
                 self._log(f"[SB] Sweep BULLISH | swept low={level:.2f} | bar={bar_idx} | {date_str} w{window_id}")
+                if cfg.sweep_entry_mode:
+                    return self._sweep_signal("long", closes[bar_idx], level, highs, lows, bar_idx, cfg, sess, window_id)
             else:
                 level = detect_buyside_sweep(
                     highs, closes, bar_idx, cfg.swing_lookback, cfg.sweep_lookback
@@ -143,6 +145,8 @@ class SignalGenerator:
                     sess.sweep_level = level
                     sess.sweep_bar = bar_idx
                     self._log(f"[SB] Sweep BEARISH | swept high={level:.2f} | bar={bar_idx} | {date_str} w{window_id}")
+                    if cfg.sweep_entry_mode:
+                        return self._sweep_signal("short", closes[bar_idx], level, highs, lows, bar_idx, cfg, sess, window_id)
 
         # --- Step 2: once biased, look for a confirming FVG ---
         if sess.bias is None:
@@ -214,6 +218,50 @@ class SignalGenerator:
             sess.signal_emitted = True
 
         return signal
+
+    def _sweep_signal(
+        self,
+        direction: str,
+        entry: float,
+        sweep_level: float,
+        highs: np.ndarray,
+        lows: np.ndarray,
+        bar_idx: int,
+        cfg: "SilverBulletConfig",
+        sess: _SessionState,
+        window_id: int,
+    ) -> Optional[Signal]:
+        """Return a signal based on the sweep bar alone (no FVG required)."""
+        if direction == "long":
+            stop = sweep_level - cfg.stop_buffer_points
+        else:
+            stop = sweep_level + cfg.stop_buffer_points
+
+        if direction == "long" and entry <= stop:
+            return None
+        if direction == "short" and entry >= stop:
+            return None
+
+        risk = abs(entry - stop)
+        if risk < cfg.min_risk_points:
+            return None
+
+        target = entry + cfg.rr * risk if direction == "long" else entry - cfg.rr * risk
+
+        if cfg.one_trade_per_window:
+            sess.signal_emitted = True
+
+        return Signal(
+            direction=direction,
+            entry_price=entry,
+            stop_price=stop,
+            target_price=target,
+            sweep_level=sweep_level,
+            sweep_bar=bar_idx,
+            fvg_zone=(entry, entry),
+            fvg_bar=bar_idx,
+            window_id=window_id,
+        )
 
     def reset_session(self, date_str: str, window_id: int) -> None:
         """Explicitly clear state for a session (e.g. after a trade is taken)."""

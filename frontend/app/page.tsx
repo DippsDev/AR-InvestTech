@@ -11,10 +11,9 @@ import Toast        from "@/components/Toast";
 type Screen = "activation" | "dashboard" | "trades" | "performance" | "settings";
 
 const NAV: { id: Exclude<Screen, "activation">; label: string; disabled?: boolean }[] = [
-  { id: "dashboard",   label: "Dashboard"   },
-  { id: "trades",      label: "Trades"      },
-  { id: "performance", label: "Performance", disabled: true },
-  { id: "settings",    label: "Settings"    },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "trades",    label: "Trades"    },
+  { id: "settings",  label: "Settings"  },
 ];
 
 export default function App() {
@@ -26,6 +25,7 @@ export default function App() {
   const [toast,     setToast]     = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [server,    setServer]    = useState("");
+  const [pingMs,    setPingMs]    = useState<number | null>(null);
   const [tFilter,   setTFilter]   = useState<"all" | "win" | "loss">("all");
   const [range,     setRange]     = useState<"7D" | "30D" | "All">("30D");
   const [menuOpen,  setMenuOpen]  = useState(false);
@@ -36,10 +36,55 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Auto-activate a personal-use license so the app is usable immediately.
+    // Replace this with a real license check when selling the bot.
+    mockApi.checkLicense().then(r => {
+      if (!r.ok) mockApi.validateLicense("ARB-PERSONAL-USE-KEY").catch(() => {});
+    }).catch(() => {});
+
+    const start = performance.now();
     mockApi.connectMt5().then(r => {
-      if (r.ok) { setConnected(true); setServer(r.server ?? ""); }
+      if (r.ok) {
+        setConnected(true);
+        setServer(r.server ?? "");
+        setPingMs(Math.round(performance.now() - start));
+      }
     }).catch(() => {});
   }, []);
+
+  // Lock body scroll when mobile drawer is open (also blocks iOS momentum scroll)
+  useEffect(() => {
+    if (!menuOpen) {
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      return;
+    }
+    const scrollY = window.scrollY;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
+
+    const preventTouch = (e: TouchEvent) => e.preventDefault();
+    document.addEventListener("touchmove", preventTouch, { passive: false });
+
+    return () => {
+      document.removeEventListener("touchmove", preventTouch);
+      document.body.style.position = "";
+      document.body.style.top = "";
+      document.body.style.left = "";
+      document.body.style.right = "";
+      document.body.style.width = "";
+      document.body.style.overflow = "";
+      document.body.style.touchAction = "";
+      window.scrollTo(0, scrollY);
+    };
+  }, [menuOpen]);
 
   useEffect(() => {
     const pollStats = async () => {
@@ -68,10 +113,12 @@ export default function App() {
 
   const handleActivated = useCallback(async () => {
     try {
+      const start = performance.now();
       const r = await mockApi.connectMt5();
       if (r.ok) {
         setConnected(true);
         setServer(r.server ?? "");
+        setPingMs(Math.round(performance.now() - start));
       } else {
         showToast(r.error ?? "MT5 connection failed — check MetaTrader is open");
       }
@@ -82,6 +129,10 @@ export default function App() {
   }, [showToast]);
 
   const handleToggleBot = useCallback(async () => {
+    if (!running && !connected) {
+      showToast("Connect MT5 first");
+      return;
+    }
     try {
       const r = running ? await mockApi.stopBot() : await mockApi.startBot();
       setRunning(r.running);
@@ -89,7 +140,7 @@ export default function App() {
     } catch {
       showToast("Failed — is python server.py running?");
     }
-  }, [running, showToast]);
+  }, [running, connected, showToast]);
 
   const handleLoadSettings = useCallback(() => mockApi.getSettings(), []);
 
@@ -113,11 +164,11 @@ export default function App() {
     <div className="app-root" style={{ background: "#F9FAFB" }}>
 
       {/* ── Title bar ───────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center justify-between px-4 select-none"
+      <div className="flex-shrink-0 flex items-center justify-between px-5 select-none"
            style={{ height: 40, background: "var(--nav-bg)", transition: "background 0.2s ease" }}>
 
         {/* Desktop: icon + brand on the left (hidden on activation screen) */}
-        <div className="mob-hide-inline flex items-center gap-2 text-[13px] font-semibold" style={{ color: "var(--nav-text)" }}>
+        <div className="mob-hide-inline flex items-center gap-2.5 text-[13px] font-semibold" style={{ color: "var(--nav-text)", marginLeft: 4 }}>
           {inApp && (
             <>
               <PulseIcon />
@@ -171,8 +222,7 @@ export default function App() {
       {screen === "activation" && (
         <Activation
           onActivated={handleActivated}
-          doValidate={k  => mockApi.validateLicense(k)}
-          doValidate2={k => mockApi.validateActivation(k)}
+          doValidate={k => mockApi.validateLicense(k)}
         />
       )}
 
@@ -248,8 +298,9 @@ export default function App() {
                 </button>
               ) : (
                 <button onClick={handleToggleBot}
+                  disabled={!connected}
                   className="w-full flex items-center justify-center gap-1.5 rounded-md font-bold"
-                  style={{ background: "var(--nav-start-bg)", color: "var(--nav-start-text)", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
+                  style={{ background: "var(--nav-start-bg)", color: "var(--nav-start-text)", fontSize: 12, padding: "8px 0", cursor: connected ? "pointer" : "not-allowed", opacity: connected ? 1 : 0.5 }}>
                   <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                     <polygon points="5 3 19 12 5 21 5 3" />
                   </svg>
@@ -275,6 +326,7 @@ export default function App() {
                   doLoad={handleLoadSettings}
                   connected={connected}
                   server={server}
+                  pingMs={pingMs}
                 />
               )}
             </div>
@@ -293,10 +345,9 @@ export default function App() {
         <div className="mobile-drawer" style={{ transform: menuOpen ? "translateX(0)" : "translateX(-100%)", color: "var(--nav-text)" }}>
 
           {/* Brand */}
-          <div className="flex items-center gap-2 px-4"
+          <div className="flex items-center justify-center px-6"
                style={{ paddingBottom: 18, borderBottom: "1px solid var(--nav-border)", marginBottom: 10 }}>
-            <PulseIcon size={20} />
-            <div>
+            <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nav-text)", textTransform: "uppercase", letterSpacing: ".04em" }}>
                 AR-InvestTech
               </div>
@@ -350,8 +401,9 @@ export default function App() {
               </button>
             ) : (
               <button onClick={handleToggleBot}
+                disabled={!connected}
                 className="w-full flex items-center justify-center gap-1.5 rounded-md font-bold"
-                style={{ background: "var(--nav-start-bg)", color: "var(--nav-start-text)", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
+                style={{ background: "var(--nav-start-bg)", color: "var(--nav-start-text)", fontSize: 12, padding: "8px 0", cursor: connected ? "pointer" : "not-allowed", opacity: connected ? 1 : 0.5 }}>
                 <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                   <polygon points="5 3 19 12 5 21 5 3" />
                 </svg>

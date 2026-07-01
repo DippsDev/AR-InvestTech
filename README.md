@@ -220,6 +220,18 @@ MT5_SERVER=YourBroker-Live
 # Optional: override if your broker uses a different symbol name
 # Common variants: US30Cash, #US30, DJ30, WALL30
 SB_SYMBOL=US30
+
+# Small-account safety floor (balance or equity must be above this value)
+# For a $100 account the default $15 is recommended.
+SB_MIN_BALANCE=15.0
+
+# Hard dollar cap per trade while balance/equity is below $150.
+SB_MAX_RISK_USD=1.0
+SB_SMALL_ACCT_THRESHOLD=150.0
+
+# Maximum drawdown from the balance at bot start before the bot halts
+# all trading and closes any open position.
+SB_MAX_DRAWDOWN_PCT=50.0
 ```
 
 > `.env` is listed in `.gitignore` and is never committed.

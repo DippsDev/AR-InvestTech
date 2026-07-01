@@ -7,11 +7,13 @@ interface Props {
   doLoad: () => Promise<S>;
   connected: boolean;
   server: string;
+  pingMs: number | null;
 }
 
 const DEFAULTS: S = {
-  login: "", server: "", risk_pct: "1.0", daily_cap: "3.0", max_trades: "2",
-  trail: true, bias: true, news: false, aggressive: false, off_hours: false,
+  login: "", server: "", symbol: "US30", risk_pct: "1.0",
+  daily_loss_limit_usd: "3.0", max_trades_per_day: "2", max_drawdown_pct: "50.0",
+  aggressive: false, off_hours: false,
 };
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -32,7 +34,7 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   );
 }
 
-export default function Settings({ onSave, doLoad, connected, server }: Props) {
+export default function Settings({ onSave, doLoad, connected, server, pingMs }: Props) {
   const [form,   setForm]   = useState<S>(DEFAULTS);
   const [saving, setSaving] = useState(false);
 
@@ -63,7 +65,7 @@ export default function Settings({ onSave, doLoad, connected, server }: Props) {
     </div>
   );
 
-  const tog = (k: "trail" | "bias" | "news" | "aggressive" | "off_hours", label: string, sub: string, last = false) => (
+  const tog = (k: "aggressive" | "off_hours", label: string, sub: string, last = false) => (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
       padding: "12px 0", borderBottom: last ? "none" : "1px solid #F3F4F6",
@@ -101,13 +103,16 @@ export default function Settings({ onSave, doLoad, connected, server }: Props) {
         </div>
         <div style={{ padding: 16 }}>
           <div className="grid-mt5">
-            {fld("login",  "Account Login", "e.g. 436343528")}
-            {fld("server", "Server",        "e.g. Exness-MT5Trail9")}
+            {fld("login",  "Account Login", "e.g. 295971388")}
+            {fld("server", "Server",        "e.g. Exness-MT5Real27")}
+            {fld("symbol", "Symbol",        "e.g. US30m")}
           </div>
           <div style={{ gridColumn: "span 2", display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginTop: 12 }}>
             <span style={{ width: 8, height: 8, borderRadius: "50%", background: connected ? "#16A34A" : "#D1D5DB", display: "inline-block" }} />
             <span style={{ color: connected ? "#16A34A" : "#6B7280", fontWeight: connected ? 600 : 400 }}>
-              {connected ? `Connected · ping 24ms` : "Not connected"}
+              {connected
+                ? (pingMs != null ? `Connected · ping ${pingMs}ms` : "Connected")
+                : "Not connected"}
             </span>
           </div>
         </div>
@@ -119,9 +124,10 @@ export default function Settings({ onSave, doLoad, connected, server }: Props) {
           <span style={{ fontSize: 12, fontWeight: 600, color: "#111827", textTransform: "uppercase", letterSpacing: ".05em" }}>Risk Parameters</span>
         </div>
         <div className="grid-3" style={{ padding: 16 }}>
-          {fld("risk_pct",   "Risk per Trade (%)")}
-          {fld("daily_cap",  "Daily Cap (%)")}
-          {fld("max_trades", "Max Open Trades")}
+          {fld("risk_pct",             "Risk per Trade (%)")}
+          {fld("daily_loss_limit_usd", "Daily Loss Limit ($)")}
+          {fld("max_trades_per_day",   "Max Trades / Day")}
+          {fld("max_drawdown_pct",     "Max Drawdown (%)")}
         </div>
       </div>
 
@@ -131,9 +137,6 @@ export default function Settings({ onSave, doLoad, connected, server }: Props) {
           <span style={{ fontSize: 12, fontWeight: 600, color: "#111827", textTransform: "uppercase", letterSpacing: ".05em" }}>Strategy Toggles</span>
         </div>
         <div style={{ padding: "6px 16px" }}>
-          {tog("bias",       "AI Signal Filter",  "Require AI confirmation before entry")}
-          {tog("trail",      "Trailing Stop",     "Lock profit as price moves favorably")}
-          {tog("news",       "News Pause",        "Halt trading around high-impact news")}
           {tog("aggressive", "Aggressive Mode",   "2–3 trades/day: lower filters + London session · restart bot to apply")}
           {tog("off_hours",  "Off-Hours Trading", "Trade outside session windows · max 3 fills/day · closes 17:00 ET · restart bot to apply", true)}
         </div>

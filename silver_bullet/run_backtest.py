@@ -41,10 +41,10 @@ def _parse_args(argv=None):
     # Strategy knobs  (defaults = best config from grid search)
     p.add_argument("--swing-lookback",      type=int,   default=3)
     p.add_argument("--sweep-lookback",      type=int,   default=10)
-    p.add_argument("--fvg-min-points",      type=float, default=8.0)
+    p.add_argument("--fvg-min-points",      type=float, default=14.0)
     p.add_argument("--entry-in-fvg",        default="mid",
                    choices=["near_edge", "mid", "far_edge"])
-    p.add_argument("--stop-buffer",         type=float, default=1.0)
+    p.add_argument("--stop-buffer",         type=float, default=0.5)
     p.add_argument("--target-mode",         default="opposite_liquidity",
                    choices=["rr", "opposite_liquidity"])
     p.add_argument("--rr",                  type=float, default=2.0)

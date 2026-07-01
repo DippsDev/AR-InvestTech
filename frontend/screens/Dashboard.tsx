@@ -21,6 +21,7 @@ function Card({ label, value, note, noteGreen }: { label: string; value: string;
 function tagColor(k: LogEntry["k"]) {
   if (k === "win") return "#22C55E";
   if (k === "sig") return "#60A5FA";
+  if (k === "warn") return "#F87171";
   return "#9CA3AF";
 }
 
@@ -95,8 +96,19 @@ export default function Dashboard({ running, log, stats }: Props) {
           <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{now} — {stats?.session ?? "—"}</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#6B7280" }}>
-          <span style={{ background: "#111827", color: "#FFFFFF", padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: ".05em" }}>US30</span>
-          <span className="mob-hide-inline">{stats?.connected ? "MT5 Connected" : "MT5 Disconnected"} · {clock}</span>
+          <span style={{ background: "#111827", color: "#FFFFFF", padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: ".05em" }}>{stats?.symbol ?? "US30"}</span>
+          <span className="mob-hide-inline">
+            {stats?.connected ? "MT5 Connected" : "MT5 Disconnected"}
+            {stats?.connected && (
+              <>
+                {" · "}
+                <span style={{ color: stats.market_open ? "#16A34A" : "#DC2626", fontWeight: 600 }}>
+                  {stats.market_open ? "Market Open" : "Market Closed"}
+                </span>
+              </>
+            )}
+            {" · "}{clock}
+          </span>
         </div>
       </div>
 
@@ -105,7 +117,7 @@ export default function Dashboard({ running, log, stats }: Props) {
         <Card label="Balance"     value={stats?.balance ?? "--"}      note={stats ? `Equity ${stats.equity}` : undefined} />
         <Card label="Today P&L"   value={stats?.profit  ?? "--"}      noteGreen={pnlIsPositive} />
         <Card label="Win Rate"    value="—"                            note="Calculating…" />
-        <Card label="Open Trades" value={stats?.open_trades ?? "0"}   note="Max 2 allowed" />
+        <Card label="Open Trades" value={stats?.open_trades ?? "0"}   note={`Max ${stats?.max_trades ?? "1"} allowed`} />
       </div>
 
       {/* Active trade + Session info */}
@@ -168,10 +180,11 @@ export default function Dashboard({ running, log, stats }: Props) {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12 }}>
               {([
                 ["Session",         stats?.session        ?? "--", ""],
-                ["Timeframes",      "M5 / H1",                    ""],
+                ["Timeframes",      stats?.timeframe      ?? "M5", ""],
                 ["Strategy",        "Silver Bullet",               "#16A34A"],
-                ["Daily Cap Used",  stats?.daily_cap_used ?? "--", ""],
-                ["Risk / Trade",    "1%",                          ""],
+                ["Risk / Trade",    stats?.risk_pct ? `${stats.risk_pct}%` : "1%", ""],
+                ["Market Status",   stats?.market_open === false ? "Closed" : stats?.market_open === true ? "Open" : "--",
+                  stats?.market_open === false ? "#DC2626" : stats?.market_open === true ? "#16A34A" : ""],
                 ["Next Refresh",    stats?.next_refresh   ?? "--", ""],
               ] as [string, string, string][]).map(([lbl, val, color]) => (
                 <div key={lbl}>

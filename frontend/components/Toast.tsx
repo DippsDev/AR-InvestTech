@@ -21,7 +21,7 @@ export default function Toast({ message, onDone }: Props) {
   return (
     <div style={{
       position: "fixed",
-      bottom: 18,
+      bottom: "calc(18px + env(safe-area-inset-bottom, 0px))",
       left: 0,
       right: 0,
       display: "flex",

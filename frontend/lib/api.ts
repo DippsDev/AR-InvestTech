@@ -7,7 +7,6 @@ export interface Stats {
   balance: string;
   equity: string;
   profit: string;
-  profit_pct?: string;
   open_trades: string;
   daily_cap_used: string;
   next_refresh: string;
@@ -21,12 +20,18 @@ export interface Stats {
     float_pnl: string;
     breakeven: boolean;
   };
+  // Extras surfaced from backend config so the UI never lies about settings.
+  symbol?: string;
+  risk_pct?: string;
+  max_trades?: string;
+  timeframe?: string;
+  market_open?: boolean;
 }
 
 export interface LogEntry {
   t: string;
   tag: string;
-  k: "win" | "sig" | "inf";
+  k: "win" | "sig" | "inf" | "warn";
   x: string;
 }
 
@@ -40,33 +45,49 @@ export interface Trade {
   pips: string;
   pnl: number;
   win: boolean;
+  pnl_text?: string;
 }
 
 export interface Settings {
   login: string;
   server: string;
+  symbol: string;
   risk_pct: string;
-  daily_cap: string;
-  max_trades: string;
-  trail: boolean;
-  bias: boolean;
-  news: boolean;
+  daily_loss_limit_usd: string;
+  max_trades_per_day: string;
+  max_drawdown_pct: string;
   aggressive: boolean;
   off_hours:  boolean;
 }
 
 export const mockApi = {
-  // License validation stays client-side (env vars baked at build time)
+  async checkLicense() {
+    try {
+      const r = await fetch(`${BASE}/license`);
+      return r.json();
+    } catch {
+      return { ok: false };
+    }
+  },
   async validateLicense(key: string) {
-    await new Promise(r => setTimeout(r, 1200));
-    const expected = process.env.NEXT_PUBLIC_LICENSE_KEY;
-    if (!expected || key !== expected) return { ok: false, error: "Invalid license key." };
-    return { ok: true };
+    try {
+      const r = await fetch(`${BASE}/license/validate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key }),
+      });
+      return r.json();
+    } catch {
+      // Fallback to build-time env key if backend is unreachable.
+      await new Promise(r => setTimeout(r, 800));
+      const expected = process.env.NEXT_PUBLIC_LICENSE_KEY;
+      if (!expected || key !== expected) return { ok: false, error: "Invalid license key." };
+      return { ok: true };
+    }
   },
   async validateActivation(key: string) {
-    await new Promise(r => setTimeout(r, 1200));
-    const expected = process.env.NEXT_PUBLIC_ACTIVATION_CODE;
-    if (!expected || key !== expected) return { ok: false, error: "Invalid activation code." };
+    // Deprecated: single-license flow only. Kept for backwards compatibility.
+    await new Promise(r => setTimeout(r, 200));
     return { ok: true };
   },
 

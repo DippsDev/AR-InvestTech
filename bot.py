@@ -23,11 +23,18 @@ class SilverBulletBot:
             # Prepend London session windows (03:00–05:00 ET) for extra setups
             cfg.windows = [
                 ("03:00", "04:00"), ("04:00", "05:00"),
-                ("10:00", "11:00"), ("11:00", "12:00"), ("13:30", "14:30"),
+                ("10:00", "11:00"), ("11:00", "12:00"),
             ]
         if config.SB_OFF_HOURS:
             cfg.off_hours_trading = True
-        self.adapter = SilverBulletLiveAdapter(cfg)
+        # Silver Bullet defaults to limit orders for better entry prices.
+        # Market-order mode is only enabled for the explicit sweep-entry demo mode.
+        if config.SB_SWEEP_ENTRY:
+            cfg.sweep_entry_mode = True
+            cfg.use_market_order = True  # sweep entry always uses market orders
+        self.cfg = cfg
+        self._symbol: str | None = None
+        self.adapter = SilverBulletLiveAdapter(cfg, symbol=None)
         self.running = False
         self._gui_mode = gui_mode  # when True, bridge owns MT5 — skip disconnect on shutdown
 
@@ -49,12 +56,16 @@ class SilverBulletBot:
         resolved = find_us30_symbol()
         if resolved:
             config.SB_SYMBOL = resolved
+            self._symbol = resolved
+            self.adapter._symbol = resolved
         else:
             logger.error("US30 symbol not found on this broker — set SB_SYMBOL in .env")
             return False
 
         self.running = True
-        logger.info(f"Bot ready | Symbol: {config.SB_SYMBOL} | Window: NY 10:00–12:00")
+        windows_str = ", ".join(f"{s}-{e} ET" for s, e in self.cfg.windows)
+        order_type = "MARKET" if self.cfg.use_market_order else "LIMIT"
+        logger.info(f"Bot ready | Symbol: {self._symbol} | Windows: {windows_str} | Order: {order_type}")
         return True
 
     def run(self) -> None:
@@ -62,10 +73,11 @@ class SilverBulletBot:
             logger.error("Initialization failed — exiting")
             return
 
+        symbol = self._symbol or config.SB_SYMBOL
         try:
             while self.running:
                 try:
-                    self.adapter.cycle(config.SB_SYMBOL)
+                    self.adapter.cycle(symbol)
                 except Exception as exc:
                     logger.error(f"[SB] Error in cycle: {exc}", exc_info=True)
                 time.sleep(30)
@@ -76,7 +88,7 @@ class SilverBulletBot:
 
     def _shutdown(self) -> None:
         logger.info("Closing positions and disconnecting...")
-        self.adapter.shutdown(config.SB_SYMBOL)
+        self.adapter.shutdown(self._symbol or config.SB_SYMBOL)
         if not self._gui_mode:
             disconnect_mt5()
         logger.info("Bot stopped.")

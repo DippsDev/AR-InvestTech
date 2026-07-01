@@ -10,7 +10,7 @@ def setup_logger():
         datefmt="%Y-%m-%d %H:%M:%S",
     )
 
-    log = logging.getLogger("xauusd_bot")
+    log = logging.getLogger("silver_bullet_bot")
     log.setLevel(getattr(logging, config.LOG_LEVEL, logging.INFO))
 
     if not log.handlers:

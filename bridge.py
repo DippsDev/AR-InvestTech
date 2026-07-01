@@ -95,10 +95,13 @@ class BotBridge:
 
     def connect_mt5(self) -> dict:
         try:
-            import MetaTrader5 as mt5
-            if not mt5.initialize():
+            from src.data_collector import connect_mt5 as _connect_mt5
+            ok = _connect_mt5(retries=2)
+            if not ok:
+                import MetaTrader5 as mt5
                 self._mt5_ok = False
                 return {"ok": False, "error": str(mt5.last_error())}
+            import MetaTrader5 as mt5
             info = mt5.account_info()
             self._mt5_ok = True
             self._add_log("[MT5]", "win", f"Connected · {info.server}" if info else "Connected")
@@ -117,7 +120,7 @@ class BotBridge:
     def _start_bot(self) -> None:
         from bot import SilverBulletBot
         self._bot = SilverBulletBot(gui_mode=True)
-        log = logging.getLogger("xauusd_bot")
+        log = logging.getLogger("silver_bullet_bot")
         self._log_handler = _BotLogHandler(self)
         log.addHandler(self._log_handler)
         self._bot_thread = threading.Thread(target=self._bot.run, daemon=True)
@@ -131,7 +134,7 @@ class BotBridge:
             self._bot.running = False
         self._bot_running = False
         if self._log_handler:
-            logging.getLogger("xauusd_bot").removeHandler(self._log_handler)
+            logging.getLogger("silver_bullet_bot").removeHandler(self._log_handler)
             self._log_handler = None
         self._add_log("[STOP]", "inf", "Bot stopped by user · positions held open")
 
@@ -179,17 +182,41 @@ class BotBridge:
         try:
             import config as _cfg
             from zoneinfo import ZoneInfo
+            from silver_bullet.config import SilverBulletConfig
+            cfg = SilverBulletConfig()
+            if _cfg.SB_AGGRESSIVE:
+                cfg.windows = [
+                    ("03:00", "04:00"), ("04:00", "05:00"),
+                    ("10:00", "11:00"), ("11:00", "12:00"),
+                ]
+            if _cfg.SB_OFF_HOURS:
+                cfg.off_hours_trading = True
             ny_h = datetime.now(ZoneInfo("America/New_York")).hour
-            if _cfg.SB_AGGRESSIVE and 3 <= ny_h < 4:          session = "London 03–04 (Active)"
-            elif _cfg.SB_AGGRESSIVE and 4 <= ny_h < 5:        session = "London 04–05 (Active)"
-            elif 10 <= ny_h < 11:                              session = "NY 10–11 (Active)"
-            elif 11 <= ny_h < 12:                              session = "NY 11–12 (Active)"
-            elif 13 <= ny_h < 14:                              session = "NY 13–14 (Active)"
-            elif _cfg.SB_OFF_HOURS and ny_h < 17:             session = "Off-Hours (Active)"
-            else:                                              session = "Off-Hours"
+
+            session = "Off-Hours"
+            for start_s, end_s in cfg.windows:
+                sh, sm = map(int, start_s.split(":"))
+                eh, em = map(int, end_s.split(":"))
+                start_h = sh + sm / 60.0
+                end_h = eh + em / 60.0
+                if start_h <= ny_h < end_h:
+                    session = f"NY {start_s}–{end_s} (Active)"
+                    break
+            if session == "Off-Hours" and _cfg.SB_OFF_HOURS and ny_h < 17:
+                session = "Off-Hours (Active)"
         except Exception:
             session = "--"
 
+        import config as _cfg
+        import MetaTrader5 as mt5
+        from datetime import datetime, timezone
+        market_open = False
+        if self._mt5_ok and _cfg.SB_SYMBOL:
+            tick = mt5.symbol_info_tick(_cfg.SB_SYMBOL)
+            sym = mt5.symbol_info(_cfg.SB_SYMBOL)
+            if tick is not None and sym is not None and sym.trade_mode == mt5.SYMBOL_TRADE_MODE_FULL:
+                last_tick = datetime.fromtimestamp(tick.time, tz=timezone.utc)
+                market_open = (datetime.now(tz=timezone.utc) - last_tick).total_seconds() < 300
         return {
             "running":        running,
             "connected":      self._mt5_ok,
@@ -201,6 +228,11 @@ class BotBridge:
             "next_refresh":   next_refresh,
             "session":        session,
             "daily_cap_used": "--",
+            "symbol":         _cfg.SB_SYMBOL,
+            "risk_pct":       str(_cfg.SB_RISK_PCT),
+            "max_trades":     _cfg.SB_MAX_TRADES,
+            "timeframe":      "M5",
+            "market_open":    market_open,
         }
 
     def _get_account(self) -> Optional[dict]:
@@ -282,16 +314,15 @@ class BotBridge:
     def get_settings(self) -> dict:
         import config
         return {
-            "login":      str(config.MT5_LOGIN),
-            "server":     config.MT5_SERVER,
-            "risk_pct":   config.SB_RISK_PCT,
-            "daily_cap":  config.SB_DAILY_CAP,
-            "max_trades": config.SB_MAX_TRADES,
-            "trail":      config.SB_TRAIL,
-            "bias":       config.SB_BIAS,
-            "news":       config.SB_NEWS,
-            "aggressive": config.SB_AGGRESSIVE,
-            "off_hours":  config.SB_OFF_HOURS,
+            "login":                str(config.MT5_LOGIN),
+            "server":               config.MT5_SERVER,
+            "symbol":               config.SB_SYMBOL,
+            "risk_pct":             str(config.SB_RISK_PCT),
+            "daily_loss_limit_usd": str(config.SB_DAILY_LOSS_LIMIT_USD),
+            "max_trades_per_day":   str(config.SB_MAX_TRADES_PER_DAY),
+            "max_drawdown_pct":     str(config.SB_MAX_DRAWDOWN_PCT),
+            "aggressive":           config.SB_AGGRESSIVE,
+            "off_hours":            config.SB_OFF_HOURS,
         }
 
     def save_settings(self, data: dict) -> dict:
@@ -305,16 +336,15 @@ class BotBridge:
                     k, v = line.split("=", 1)
                     env[k.strip()] = v.strip()
             mapping = {
-                "login":      "MT5_LOGIN",
-                "server":     "MT5_SERVER",
-                "risk_pct":   "SB_RISK_PCT",
-                "daily_cap":  "SB_DAILY_CAP",
-                "max_trades": "SB_MAX_TRADES",
-                "trail":      "SB_TRAIL",
-                "bias":       "SB_BIAS",
-                "news":       "SB_NEWS",
-                "aggressive": "SB_AGGRESSIVE",
-                "off_hours":  "SB_OFF_HOURS",
+                "login":                "MT5_LOGIN",
+                "server":               "MT5_SERVER",
+                "symbol":               "SB_SYMBOL",
+                "risk_pct":             "SB_RISK_PCT",
+                "daily_loss_limit_usd": "SB_DAILY_LOSS_LIMIT_USD",
+                "max_trades_per_day":   "SB_MAX_TRADES_PER_DAY",
+                "max_drawdown_pct":     "SB_MAX_DRAWDOWN_PCT",
+                "aggressive":           "SB_AGGRESSIVE",
+                "off_hours":            "SB_OFF_HOURS",
             }
             for field, env_key in mapping.items():
                 if field in data:

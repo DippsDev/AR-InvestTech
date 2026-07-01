@@ -16,7 +16,7 @@ app = FastAPI(title="AR-InvestTech API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "https://ar-invest-tech.vercel.app"],
+    allow_origins=["*"],  # Allow any origin so Cloudflare Tunnel / phone access works
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -91,12 +91,11 @@ def get_settings():
 class SettingsBody(BaseModel):
     login: str = ""
     server: str = ""
+    symbol: str = "US30"
     risk_pct: str = "1.0"
-    daily_cap: str = "3.0"
-    max_trades: str = "1"
-    trail: bool = True
-    bias: bool = False
-    news: bool = False
+    daily_loss_limit_usd: str = "3.0"
+    max_trades_per_day: str = "2"
+    max_drawdown_pct: str = "50.0"
     aggressive: bool = False
     off_hours:  bool = False
 
@@ -106,4 +105,4 @@ def save_settings(body: SettingsBody):
 
 
 if __name__ == "__main__":
-    uvicorn.run("server:app", host="127.0.0.1", port=8000, reload=True)
+    uvicorn.run("server:app", host="0.0.0.0", port=8000, reload=True)

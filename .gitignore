@@ -14,6 +14,10 @@ __pycache__/
 # Logs & data outputs
 logs/*.log
 trades.csv
+backtests/*.json
+backtests/*.csv
+backtests/*.png
+backtests/*.log
 
 # Next.js
 frontend/.next/

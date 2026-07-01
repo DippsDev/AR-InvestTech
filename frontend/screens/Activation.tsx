@@ -4,12 +4,13 @@ import { useState, useCallback } from "react";
 interface Props {
   onActivated:  () => void;
   doValidate:   (key: string) => Promise<{ ok: boolean; error?: string }>;
-  doValidate2:  (key: string) => Promise<{ ok: boolean; error?: string }>;
 }
 
 function fmtKey(raw: string) {
-  const v = raw.replace(/[^A-Z0-9]/gi, "").toUpperCase().slice(0, 15);
-  const parts = [v.slice(0, 3), v.slice(3, 7), v.slice(7, 11), v.slice(11, 15)].filter(Boolean);
+  const stripped = raw.replace(/[^A-Z0-9]/gi, "").toUpperCase();
+  const withoutPrefix = stripped.startsWith("ARB") ? stripped.slice(3) : stripped;
+  const v = withoutPrefix.slice(0, 12);
+  const parts = ["ARB", v.slice(0, 4), v.slice(4, 8), v.slice(8, 12)].filter(p => p.length > 0);
   return parts.join("-");
 }
 
@@ -24,7 +25,7 @@ const inputStyle: React.CSSProperties = {
   color: "var(--act-text)",
   outline: "none",
   fontFamily: "ui-monospace, Consolas, monospace",
-  letterSpacing: ".1em",
+  letterSpacing: ".05em",
   textAlign: "center",
   transition: "background 0.2s ease, border-color 0.2s ease, color 0.2s ease",
 };
@@ -39,45 +40,29 @@ const labelStyle: React.CSSProperties = {
   marginBottom: 6,
 };
 
-export default function Activation({ onActivated, doValidate, doValidate2 }: Props) {
-  const [key1,    setKey1]    = useState("");
-  const [key2,    setKey2]    = useState("");
-  const [error1,  setError1]  = useState("");
-  const [error2,  setError2]  = useState("");
+export default function Activation({ onActivated, doValidate }: Props) {
+  const [key,     setKey]     = useState("");
+  const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleKey1 = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setKey1(fmtKey(e.target.value));
-    setError1("");
-  }, []);
-
-  const handleKey2 = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setKey2(fmtKey(e.target.value));
-    setError2("");
+  const handleKey = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setKey(fmtKey(e.target.value));
+    setError("");
   }, []);
 
   const activate = useCallback(async () => {
     if (loading) return;
-    setError1("");
-    setError2("");
-
-    // Require both fields before touching the API
-    let localErr = false;
-    if (!key1) { setError1("License key is required."); localErr = true; }
-    if (!key2) { setError2("Activation code is required."); localErr = true; }
-    if (localErr) return;
-
+    if (!key) { setError("License key is required."); return; }
     setLoading(true);
+    setError("");
     try {
-      const [res1, res2] = await Promise.all([doValidate(key1), doValidate2(key2)]);
-      let hasError = false;
-      if (!res1.ok) { setError1(res1.error ?? "Invalid license key."); hasError = true; }
-      if (!res2.ok) { setError2(res2.error ?? "Invalid activation code."); hasError = true; }
-      if (!hasError) onActivated();
+      const res = await doValidate(key);
+      if (res.ok) onActivated();
+      else setError(res.error ?? "Invalid license key.");
     } finally {
       setLoading(false);
     }
-  }, [key1, key2, loading, doValidate, doValidate2, onActivated]);
+  }, [key, loading, doValidate, onActivated]);
 
   return (
     <div className="flex-1 flex flex-col animate-fade"
@@ -110,7 +95,7 @@ export default function Activation({ onActivated, doValidate, doValidate2 }: Pro
           </div>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: "var(--act-text)", transition: "color 0.2s ease" }}>AR-InvestTech</div>
-            <div style={{ fontSize: 11, color: "var(--act-text-dim)", marginTop: 1 }}>US30 Scalping System</div>
+            <div style={{ fontSize: 11, color: "var(--act-text-dim)", marginTop: 1 }}>Silver Bullet · US30</div>
           </div>
         </div>
 
@@ -118,44 +103,31 @@ export default function Activation({ onActivated, doValidate, doValidate2 }: Pro
           Activate Your License
         </h1>
         <p style={{ fontSize: 13, color: "var(--act-text-sub)", margin: "0 0 24px", lineHeight: 1.5 }}>
-          Enter both codes from your purchase confirmation to unlock the bot.
+          Enter your license key to unlock the bot.
         </p>
 
-        {/* Key 1 */}
-        <div style={{ textAlign: "left", marginBottom: 14 }}>
+        {/* Key */}
+        <div style={{ textAlign: "left", marginBottom: 20 }}>
           <label style={labelStyle}>License Key</label>
           <input
             type="text"
-            value={key1}
-            onChange={handleKey1}
+            value={key}
+            onChange={handleKey}
             onKeyDown={e => e.key === "Enter" && activate()}
             placeholder="ARB-XXXX-XXXX-XXXX"
             maxLength={19}
+            inputMode="text"
+            autoCapitalize="characters"
+            autoCorrect="off"
             className="act-input"
             style={inputStyle}
           />
-          {error1 && <div style={{ color: "#F87171", fontSize: 12, marginTop: 5 }}>{error1}</div>}
-        </div>
-
-        {/* Key 2 */}
-        <div style={{ textAlign: "left", marginBottom: 20 }}>
-          <label style={labelStyle}>Activation Code</label>
-          <input
-            type="text"
-            value={key2}
-            onChange={handleKey2}
-            onKeyDown={e => e.key === "Enter" && activate()}
-            placeholder="ACT-XXXX-XXXX-XXXX"
-            maxLength={19}
-            className="act-input"
-            style={inputStyle}
-          />
-          {error2 && <div style={{ color: "#F87171", fontSize: 12, marginTop: 5 }}>{error2}</div>}
+          {error && <div style={{ color: "#F87171", fontSize: 12, marginTop: 5 }}>{error}</div>}
         </div>
 
         <button
           onClick={activate}
-          disabled={loading || !key1 || !key2}
+          disabled={loading || !key}
           className="w-full flex items-center justify-center gap-2"
           style={{
             background: "var(--nav-start-bg)",
@@ -165,9 +137,9 @@ export default function Activation({ onActivated, doValidate, doValidate2 }: Pro
             padding: "12px 0",
             fontSize: 14,
             fontWeight: 700,
-            cursor: (loading || !key1 || !key2) ? "not-allowed" : "pointer",
+            cursor: (loading || !key) ? "not-allowed" : "pointer",
             fontFamily: "inherit",
-            opacity: (loading || !key1 || !key2) ? 0.45 : 1,
+            opacity: (loading || !key) ? 0.45 : 1,
             transition: "background 0.2s ease, color 0.2s ease, opacity 0.15s ease",
           }}
         >
@@ -186,9 +158,9 @@ export default function Activation({ onActivated, doValidate, doValidate2 }: Pro
         </div>
 
         <div style={{ fontSize: 12, color: "var(--act-text-dim)" }}>
-          Need codes?{" "}
+          Need a license?{" "}
           <a href="#" style={{ color: "var(--act-text-sub)", fontWeight: 600, textDecoration: "none" }}>
-            Purchase a license →
+            Purchase →
           </a>
         </div>
         <div style={{ marginTop: 18, fontSize: 11, color: "var(--act-text-dim)", letterSpacing: ".04em" }}>

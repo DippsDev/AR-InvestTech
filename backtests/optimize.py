@@ -5,7 +5,7 @@ Grid-searches key strategy parameters, ranks every combination by a
 Calmar-style composite score, and writes results to backtest_optimization.json.
 
 Usage:
-    python optimize.py [--data us30_m5_200d.csv] [--out backtest_optimization.json]
+    python backtests/optimize.py [--data <csv>] [--out backtests/backtest_optimization.json]
 """
 from __future__ import annotations
 
@@ -17,6 +17,9 @@ import sys
 import time
 from datetime import datetime, timezone
 from itertools import product
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from silver_bullet.config import SilverBulletConfig
 from silver_bullet.data import load_csv, add_ny_time, add_window_id
@@ -134,8 +137,8 @@ def _sensitivity(results: list[dict]) -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default="us30_m5_200d.csv")
-    ap.add_argument("--out",  default="backtest_optimization.json")
+    ap.add_argument("--data", default=str(Path(__file__).parent.parent / "us30_m5_200d.csv"))
+    ap.add_argument("--out",  default=str(Path(__file__).parent / "backtest_optimization.json"))
     args = ap.parse_args()
 
     # Build all combos
