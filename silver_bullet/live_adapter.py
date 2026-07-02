@@ -20,6 +20,7 @@ Design notes
 """
 from __future__ import annotations
 
+from dataclasses import replace as _dc_replace
 from datetime import datetime, time as dtime
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -30,6 +31,7 @@ import pandas as pd
 import config as root_config
 
 from .config import SilverBulletConfig
+from .news_calendar import is_news_day
 from .strategy import Signal, SignalGenerator
 
 NY_TZ = ZoneInfo("America/New_York")
@@ -59,6 +61,8 @@ class SilverBulletLiveAdapter:
         self._open_is_off_hours: bool = False
         self._off_hours_fills: int = 0
         self._off_hours_date: str = ""
+        # News-day tracking (to log once per day)
+        self._news_skip_date: str = ""
         # Drawdown circuit breaker
         self._drawdown_floor: Optional[float] = None
         self._drawdown_halted: bool = False
@@ -121,6 +125,18 @@ class SilverBulletLiveAdapter:
             self._off_hours_date  = today_ny
             self._off_hours_fills = 0
 
+        # News-day circuit breaker: no new entries on high-impact macro days.
+        news_skip = self._cfg.skip_news_days and is_news_day(today_ny)
+        if news_skip:
+            if self._news_skip_date != today_ny:
+                logger.info(f"[SB] News day {today_ny} — trading paused for high-impact macro releases")
+                self._news_skip_date = today_ny
+            if self._pending_ticket is not None:
+                self._cancel_pending()
+            if self._open_ticket is not None:
+                self._time_exit(symbol)
+            return
+
         # 3. Manage open position
         if self._open_ticket is not None:
             self._sync_position(symbol)
@@ -179,16 +195,23 @@ class SilverBulletLiveAdapter:
                     f"{label} | {'init' if not self._initialized else 'live'}"
                 )
 
-            signal = self._generator.on_bar(
-                bar_idx=i,
-                highs=highs,
-                lows=lows,
-                closes=closes,
-                opens=opens,
-                in_window=bar_in_win,
-                window_id=effective_wid,
-                date_str=date_str,
-            )
+            # Use tighter scalp parameters for off-hours setups.
+            original_cfg = self._generator._cfg
+            if bar_off_hrs:
+                self._generator._cfg = self._off_hours_cfg()
+            try:
+                signal = self._generator.on_bar(
+                    bar_idx=i,
+                    highs=highs,
+                    lows=lows,
+                    closes=closes,
+                    opens=opens,
+                    in_window=bar_in_win,
+                    window_id=effective_wid,
+                    date_str=date_str,
+                )
+            finally:
+                self._generator._cfg = original_cfg
 
             # Act only after initialisation and only on today's signals
             if signal is not None and self._initialized and date_str == today_ny:
@@ -321,6 +344,9 @@ class SilverBulletLiveAdapter:
 
         from src.logger import logger
 
+        # Off-hours positions use their own tighter breakeven/trail parameters.
+        cfg_eff = self._off_hours_cfg() if self._open_is_off_hours else self._cfg
+
         sig      = self._open_signal
         fill     = self._open_fill_price
         risk_pts = abs(fill - sig.stop_price)
@@ -328,7 +354,7 @@ class SilverBulletLiveAdapter:
         current_px = tick.bid if is_long else tick.ask
 
         # Phase 1 — breakeven
-        if not self._breakeven_triggered and self._cfg.breakeven_r > 0:
+        if not self._breakeven_triggered and cfg_eff.breakeven_r > 0:
             trigger_dist = risk_pts * self._cfg.breakeven_r
             triggered = (
                 current_px >= fill + trigger_dist if is_long
@@ -355,15 +381,15 @@ class SilverBulletLiveAdapter:
                     )
 
         # Phase 2 — trailing stop (only after breakeven)
-        if self._breakeven_triggered and self._cfg.trail_r > 0:
+        if self._breakeven_triggered and cfg_eff.trail_r > 0:
             if is_long:
                 if self._trail_best_price is None or current_px > self._trail_best_price:
                     self._trail_best_price = current_px
-                new_sl = self._trail_best_price - risk_pts * self._cfg.trail_r
+                new_sl = self._trail_best_price - risk_pts * cfg_eff.trail_r
             else:
                 if self._trail_best_price is None or current_px < self._trail_best_price:
                     self._trail_best_price = current_px
-                new_sl = self._trail_best_price + risk_pts * self._cfg.trail_r
+                new_sl = self._trail_best_price + risk_pts * cfg_eff.trail_r
 
             positions = mt5.positions_get(ticket=self._open_ticket) or []
             if not positions:
@@ -389,6 +415,10 @@ class SilverBulletLiveAdapter:
 
     def _place_limit(self, symbol: str, signal: Signal, lots: float) -> None:
         from src.logger import logger
+
+        if self._cfg.skip_news_days and is_news_day(datetime.now(NY_TZ).date()):
+            logger.warning("[SB] Limit order blocked — high-impact news day")
+            return
 
         if not self._validate_symbol(symbol):
             return
@@ -438,6 +468,10 @@ class SilverBulletLiveAdapter:
 
     def _place_market(self, symbol: str, signal: Signal, lots: float, is_off_hrs: bool) -> None:
         from src.logger import logger
+
+        if self._cfg.skip_news_days and is_news_day(datetime.now(NY_TZ).date()):
+            logger.warning("[SB] Market order blocked — high-impact news day")
+            return
 
         if not self._validate_symbol(symbol):
             return
@@ -629,6 +663,22 @@ class SilverBulletLiveAdapter:
             if dtime(sh, sm) <= t < dtime(eh, em):
                 return True, wid
         return False, None
+
+    def _off_hours_cfg(self) -> SilverBulletConfig:
+        """Return a config copy with tighter scalp parameters for off-hours."""
+        c = self._cfg
+        return _dc_replace(
+            c,
+            fvg_min_points     = c.off_hours_fvg_min_points,
+            min_risk_points    = c.off_hours_min_risk_points,
+            target_mode        = c.off_hours_target_mode,
+            rr                 = c.off_hours_rr,
+            breakeven_r        = c.off_hours_breakeven_r,
+            trail_r            = c.off_hours_trail_r,
+            early_exit_r       = c.off_hours_early_exit_r,
+            deep_profit_r      = c.off_hours_deep_profit_r,
+            deep_trail_r       = c.off_hours_deep_trail_r,
+        )
 
     def _is_cutoff(self, ts_ny: datetime) -> bool:
         """True once we've passed the off-hours daily close time."""

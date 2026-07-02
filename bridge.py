@@ -204,6 +204,11 @@ class BotBridge:
                     break
             if session == "Off-Hours" and _cfg.SB_OFF_HOURS and ny_h < 17:
                 session = "Off-Hours (Active)"
+            # Surface news pause in the dashboard so it is obvious why the bot is idle.
+            if _cfg.SB_NEWS:
+                from silver_bullet.news_calendar import is_news_day
+                if is_news_day(datetime.now(ZoneInfo("America/New_York")).date()):
+                    session += " · News pause"
         except Exception:
             session = "--"
 
@@ -323,6 +328,7 @@ class BotBridge:
             "max_drawdown_pct":     str(config.SB_MAX_DRAWDOWN_PCT),
             "aggressive":           config.SB_AGGRESSIVE,
             "off_hours":            config.SB_OFF_HOURS,
+            "news":                 config.SB_NEWS,
         }
 
     def save_settings(self, data: dict) -> dict:
@@ -345,6 +351,7 @@ class BotBridge:
                 "max_drawdown_pct":     "SB_MAX_DRAWDOWN_PCT",
                 "aggressive":           "SB_AGGRESSIVE",
                 "off_hours":            "SB_OFF_HOURS",
+                "news":                 "SB_NEWS",
             }
             for field, env_key in mapping.items():
                 if field in data:

@@ -25,7 +25,8 @@ if __name__ == "__main__":
     sys.exit(main())
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as _dc_replace
+from datetime import time as dtime
 from typing import Optional
 
 import numpy as np
@@ -77,6 +78,7 @@ class Trade:
     breakeven_triggered: bool = False
     trail_best_price: Optional[float] = None
     is_news_trade: bool = False   # True when opened on a high-impact news day
+    is_off_hours: bool = False    # True when opened in an off-hours scalp window
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +90,7 @@ class _PendingOrder:
     signal: Signal
     placed_bar: int
     date_str: str
+    is_off_hours: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -133,14 +136,37 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
         bar_close  = closes[i]
         bar_in_win = bool(in_win[i])
 
+        # Off-hours scalp bars are outside the configured windows but before
+        # the daily off-hours cutoff. Each clock-hour gets its own window ID.
+        bar_off_hrs = (
+            cfg.off_hours_trading
+            and not bar_in_win
+            and not _is_past_cutoff(bar_ts.time(), cfg.off_hours_close_time)
+        )
+        bar_in_entry = bar_in_win or bar_off_hrs
+        entry_wid    = bar_wid if bar_in_win else (100 + bar_ts.hour if bar_off_hrs else None)
+
         # ── 1. Manage open trade ────────────────────────────────────────────
         if open_trade is not None:
             trade = open_trade
             closed = False
 
+            # Off-hours trades use their own tighter scalp parameters.
+            eff_cfg = _off_hours_cfg(cfg) if trade.is_off_hours else cfg
+
+            # Time-exit rules differ: regular trades exit when the window closes;
+            # off-hours trades exit at the off-hours cutoff or on a new day.
+            if trade.is_off_hours:
+                time_exit = (
+                    _is_past_cutoff(bar_ts.time(), cfg.off_hours_close_time)
+                    or bar_date != trade.date
+                )
+            else:
+                time_exit = not bar_in_win
+
             # ── Breakeven: slide stop to entry once price reaches +N×R ────
-            if cfg.breakeven_r > 0 and not trade.breakeven_triggered:
-                trigger_dist = trade.risk_points * cfg.breakeven_r
+            if eff_cfg.breakeven_r > 0 and not trade.breakeven_triggered:
+                trigger_dist = trade.risk_points * eff_cfg.breakeven_r
                 if trade.direction == "long":
                     if bar_high >= trade.entry_price + trigger_dist:
                         trade.stop_price = trade.entry_price
@@ -152,15 +178,15 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
 
             # ── Trailing stop: follow price at trail_r distance after breakeven ──
             # Skip trail on news-day trades so the extended 5R target has room.
-            trail_active = cfg.trail_r > 0 and not (trade.is_news_trade and cfg.news_disable_trail)
+            trail_active = eff_cfg.trail_r > 0 and not (trade.is_news_trade and cfg.news_disable_trail)
             if trail_active and trade.breakeven_triggered:
                 if trade.direction == "long":
                     if trade.trail_best_price is None or bar_high > trade.trail_best_price:
                         trade.trail_best_price = bar_high
                     best_r = (trade.trail_best_price - trade.entry_price) / trade.risk_points if trade.risk_points > 0 else 0.0
-                    active_trail_r = (cfg.deep_trail_r
-                                      if cfg.deep_profit_r > 0 and best_r >= cfg.deep_profit_r
-                                      else cfg.trail_r)
+                    active_trail_r = (eff_cfg.deep_trail_r
+                                      if eff_cfg.deep_profit_r > 0 and best_r >= eff_cfg.deep_profit_r
+                                      else eff_cfg.trail_r)
                     new_trail_stop = trade.trail_best_price - active_trail_r * trade.risk_points
                     if new_trail_stop > trade.stop_price:
                         trade.stop_price = new_trail_stop
@@ -168,9 +194,9 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
                     if trade.trail_best_price is None or bar_low < trade.trail_best_price:
                         trade.trail_best_price = bar_low
                     best_r = (trade.entry_price - trade.trail_best_price) / trade.risk_points if trade.risk_points > 0 else 0.0
-                    active_trail_r = (cfg.deep_trail_r
-                                      if cfg.deep_profit_r > 0 and best_r >= cfg.deep_profit_r
-                                      else cfg.trail_r)
+                    active_trail_r = (eff_cfg.deep_trail_r
+                                      if eff_cfg.deep_profit_r > 0 and best_r >= eff_cfg.deep_profit_r
+                                      else eff_cfg.trail_r)
                     new_trail_stop = trade.trail_best_price + active_trail_r * trade.risk_points
                     if new_trail_stop < trade.stop_price:
                         trade.stop_price = new_trail_stop
@@ -178,15 +204,15 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
             # ── Early exit: cut partial loss before structural stop is reached ──
             # Only applies when breakeven has not yet triggered — once we're
             # protecting at entry the normal stop/trail handles everything.
-            if not closed and cfg.early_exit_r > 0 and not trade.breakeven_triggered:
+            if not closed and eff_cfg.early_exit_r > 0 and not trade.breakeven_triggered:
                 if trade.direction == "long":
-                    early_level = trade.entry_price - cfg.early_exit_r * trade.risk_points
+                    early_level = trade.entry_price - eff_cfg.early_exit_r * trade.risk_points
                     if bar_low <= early_level and early_level > trade.stop_price:
                         trade.exit_price = min(early_level, bar_open)
                         trade.exit_reason = "stop"
                         closed = True
                 else:
-                    early_level = trade.entry_price + cfg.early_exit_r * trade.risk_points
+                    early_level = trade.entry_price + eff_cfg.early_exit_r * trade.risk_points
                     if bar_high >= early_level and early_level < trade.stop_price:
                         trade.exit_price = max(early_level, bar_open)
                         trade.exit_reason = "stop"
@@ -209,7 +235,7 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
                     trade.exit_price  = max(trade.target_price, bar_open) if bar_open > trade.target_price else trade.target_price
                     trade.exit_reason = "target"
                     closed = True
-                elif not bar_in_win:
+                elif time_exit:
                     # Window closed — time exit at this bar's open (next bar relative to placement)
                     trade.exit_price  = bar_open
                     trade.exit_reason = "time_exit"
@@ -231,7 +257,7 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
                     trade.exit_price  = min(trade.target_price, bar_open) if bar_open < trade.target_price else trade.target_price
                     trade.exit_reason = "target"
                     closed = True
-                elif not bar_in_win:
+                elif time_exit:
                     trade.exit_price  = bar_open
                     trade.exit_reason = "time_exit"
                     closed = True
@@ -251,8 +277,21 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
             p = pending
             sig = p.signal
 
-            # Cancel if window changed or exited
-            if not bar_in_win or bar_wid != sig.window_id or bar_date != p.date_str:
+            # Cancel if window changed, session ended, or day rolled over.
+            if p.is_off_hours:
+                cancelled = (
+                    bar_date != p.date_str
+                    or _is_past_cutoff(bar_ts.time(), cfg.off_hours_close_time)
+                    or not bar_in_entry
+                    or entry_wid != sig.window_id
+                )
+            else:
+                cancelled = (
+                    bar_date != p.date_str
+                    or not bar_in_win
+                    or bar_wid != sig.window_id
+                )
+            if cancelled:
                 pending = None
             else:
                 fill_price = _check_fill(sig, bar_open, bar_high, bar_low, cfg)
@@ -263,21 +302,22 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
 
                     fill_is_news = is_news_day is not None and bool(is_news_day[i])
                     open_trade = Trade(
-                        trade_id    = trade_counter,
-                        direction   = sig.direction,
-                        date        = bar_date,
-                        window_id   = sig.window_id,
-                        entry_time  = bar_ts,
-                        entry_price = fill_price,
-                        stop_price  = sig.stop_price,
-                        target_price= sig.target_price,
-                        sweep_level = sig.sweep_level,
-                        sweep_bar   = sig.sweep_bar,
-                        fvg_zone    = sig.fvg_zone,
-                        fvg_bar     = sig.fvg_bar,
-                        risk_points = risk_points,
-                        units       = units,
+                        trade_id      = trade_counter,
+                        direction     = sig.direction,
+                        date          = bar_date,
+                        window_id     = sig.window_id,
+                        entry_time    = bar_ts,
+                        entry_price   = fill_price,
+                        stop_price    = sig.stop_price,
+                        target_price  = sig.target_price,
+                        sweep_level   = sig.sweep_level,
+                        sweep_bar     = sig.sweep_bar,
+                        fvg_zone      = sig.fvg_zone,
+                        fvg_bar       = sig.fvg_bar,
+                        risk_points   = risk_points,
+                        units         = units,
                         is_news_trade = fill_is_news,
+                        is_off_hours  = p.is_off_hours,
                     )
                     pending = None
                     continue
@@ -285,19 +325,28 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
         # ── 3. Ask strategy for a new signal ────────────────────────────────
         on_news_day = is_news_day is not None and bool(is_news_day[i])
         skip_bar    = cfg.skip_news_days and on_news_day
-        if bar_in_win and pending is None and open_trade is None and bar_wid is not None and not skip_bar:
+        if bar_in_entry and pending is None and open_trade is None and entry_wid is not None and not skip_bar:
             p_bias = int(prev_day_biases[i]) if prev_day_biases is not None else 0
-            signal = generator.on_bar(
-                bar_idx      = i,
-                highs        = highs,
-                lows         = lows,
-                closes       = closes,
-                opens        = opens,
-                in_window    = bar_in_win,
-                window_id    = bar_wid,
-                date_str     = bar_date,
-                prev_day_bias = p_bias,
-            )
+
+            # Off-hours setups use their own tighter scalp parameters.
+            gen_cfg = _off_hours_cfg(cfg) if bar_off_hrs else cfg
+            old_cfg = generator._cfg
+            generator._cfg = gen_cfg
+            try:
+                signal = generator.on_bar(
+                    bar_idx       = i,
+                    highs         = highs,
+                    lows          = lows,
+                    closes        = closes,
+                    opens         = opens,
+                    in_window     = bar_in_entry,
+                    window_id     = entry_wid,
+                    date_str      = bar_date,
+                    prev_day_bias = p_bias,
+                )
+            finally:
+                generator._cfg = old_cfg
+
             # On high-impact news days extend the profit target to capture the larger move
             if signal is not None and on_news_day and cfg.news_rr > 0:
                 risk = abs(signal.entry_price - signal.stop_price)
@@ -307,9 +356,10 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
                 )
             if signal is not None:
                 pending = _PendingOrder(
-                    signal     = signal,
-                    placed_bar = i,
-                    date_str   = bar_date,
+                    signal       = signal,
+                    placed_bar   = i,
+                    date_str     = bar_date,
+                    is_off_hours = bar_off_hrs,
                 )
 
     # Flush any trade still open at end of data
@@ -352,6 +402,28 @@ def _check_fill(
             return sig.entry_price - cost          # sell limit: receive a bit less
 
     return None
+
+
+def _is_past_cutoff(t: dtime, close_time_str: str) -> bool:
+    """Return True if time-of-day is at/past the configured off-hours close."""
+    h, m = map(int, close_time_str.split(":"))
+    return t >= dtime(h, m)
+
+
+def _off_hours_cfg(cfg: SilverBulletConfig) -> SilverBulletConfig:
+    """Return a config copy with the tighter off-hours scalp overrides."""
+    return _dc_replace(
+        cfg,
+        fvg_min_points  = cfg.off_hours_fvg_min_points,
+        min_risk_points = cfg.off_hours_min_risk_points,
+        target_mode     = cfg.off_hours_target_mode,
+        rr              = cfg.off_hours_rr,
+        breakeven_r     = cfg.off_hours_breakeven_r,
+        trail_r         = cfg.off_hours_trail_r,
+        early_exit_r    = cfg.off_hours_early_exit_r,
+        deep_profit_r   = cfg.off_hours_deep_profit_r,
+        deep_trail_r    = cfg.off_hours_deep_trail_r,
+    )
 
 
 def _finalise_trade(trade: Trade, cfg: SilverBulletConfig) -> None:

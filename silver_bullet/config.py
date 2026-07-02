@@ -60,6 +60,21 @@ class SilverBulletConfig:
     off_hours_max_trades: int = 3        # fills allowed per calendar day
     off_hours_close_time: str = "17:00"  # ET — force-close before this hour
 
+    # ── Off-hours scalp mode (Option 1) ───────────────────────────────────────
+    # These values override the normal Silver Bullet parameters for any trade
+    # placed outside the configured NY session windows. They are designed for
+    # low-volatility, small-target scalping while the main session is closed.
+    # Tuned on us30_m5_200d.csv for best balance (PNL/DD × profit factor).
+    off_hours_fvg_min_points: float = 12.0
+    off_hours_min_risk_points: float = 3.0
+    off_hours_target_mode: str = "rr"
+    off_hours_rr: float = 1.0
+    off_hours_breakeven_r: float = 0.3
+    off_hours_trail_r: float = 0.10
+    off_hours_early_exit_r: float = 0.4
+    off_hours_deep_profit_r: float = 1.5
+    off_hours_deep_trail_r: float = 0.1
+
     # ── Trade management ──────────────────────────────────────────────────────
     one_trade_per_window: bool = True
     # Minimum risk in points; signals with smaller risk are skipped.
@@ -74,8 +89,8 @@ class SilverBulletConfig:
     # the strongest setups. Use --use-daily-bias only with trend-following overlays.
     use_daily_bias: bool = False
     # Skip news days entirely (NFP / FOMC / CPI / GDP).
-    # Default off — large news-day moves are caught by the extended news_rr target.
-    skip_news_days: bool = False
+    # Default on — the live bot will not open new trades on high-impact macro days.
+    skip_news_days: bool = True
     # On high-impact news days (NFP/FOMC/CPI/GDP), use this R:R instead of `rr`.
     # Set to 0.0 to use the same target on all days.
     news_rr: float = 5.0

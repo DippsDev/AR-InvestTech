@@ -67,6 +67,16 @@ def _parse_args(argv=None):
                    help="Skip signal generation on NFP/FOMC/CPI/GDP release days")
     p.add_argument("--news-rr",             type=float, default=5.0,
                    help="R:R target to use on high-impact news days (0=same as --rr)")
+    p.add_argument("--off-hours",            action="store_true", default=False,
+                   help="Enable off-hours scalp trading outside configured windows until 17:00 ET")
+    p.add_argument("--off-hours-rr",         type=float, default=None,
+                   help="Off-hours R:R target (default 1.3)")
+    p.add_argument("--off-hours-fvg-min",    type=float, default=None,
+                   help="Off-hours FVG minimum in points (default 8.0)")
+    p.add_argument("--off-hours-breakeven",  type=float, default=None,
+                   help="Off-hours breakeven trigger in R (default 0.3)")
+    p.add_argument("--off-hours-trail",      type=float, default=None,
+                   help="Off-hours trailing distance in R (default 0.15)")
 
     # Cost / sizing
     p.add_argument("--spread",      type=float, default=2.0)
@@ -132,6 +142,11 @@ def main(argv=None):
         use_daily_bias        = args.use_daily_bias,
         skip_news_days        = args.skip_news_days,
         news_rr               = args.news_rr,
+        off_hours_trading     = args.off_hours,
+        off_hours_rr          = args.off_hours_rr if args.off_hours_rr is not None else SilverBulletConfig.off_hours_rr,
+        off_hours_fvg_min_points = args.off_hours_fvg_min if args.off_hours_fvg_min is not None else SilverBulletConfig.off_hours_fvg_min_points,
+        off_hours_breakeven_r = args.off_hours_breakeven if args.off_hours_breakeven is not None else SilverBulletConfig.off_hours_breakeven_r,
+        off_hours_trail_r     = args.off_hours_trail if args.off_hours_trail is not None else SilverBulletConfig.off_hours_trail_r,
     )
 
     print(f"Loading data from {args.data} ...")

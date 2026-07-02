@@ -41,6 +41,10 @@ def main() -> None:
     print(f"SB_RISK_PCT : {root_config.SB_RISK_PCT}%")
     print(f"Aggressive  : {root_config.SB_AGGRESSIVE}")
     print(f"Off-hours   : {root_config.SB_OFF_HOURS}")
+    print(f"News skip   : {root_config.SB_NEWS}")
+    if not root_config.SB_NEWS:
+        print("\n[WARN] High-impact news-day filter is OFF. "
+              "It is strongly recommended to set SB_NEWS=true before going live.")
     print(f"Market order: {root_config.SB_MARKET_ORDER}")
 
     if root_config.MT5_LOGIN == 0 or not root_config.MT5_PASSWORD or not root_config.MT5_SERVER:

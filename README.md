@@ -232,6 +232,11 @@ SB_SMALL_ACCT_THRESHOLD=150.0
 # Maximum drawdown from the balance at bot start before the bot halts
 # all trading and closes any open position.
 SB_MAX_DRAWDOWN_PCT=50.0
+
+# Skip high-impact US macro release days (NFP / FOMC / CPI / GDP).
+# Strongly recommended for live trading — spreads and slippage can blow
+# through normal stops around these events.
+SB_NEWS=true
 ```
 
 > `.env` is listed in `.gitignore` and is never committed.

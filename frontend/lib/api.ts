@@ -58,6 +58,7 @@ export interface Settings {
   max_drawdown_pct: string;
   aggressive: boolean;
   off_hours:  boolean;
+  news:       boolean;
 }
 
 export const mockApi = {

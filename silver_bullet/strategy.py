@@ -13,6 +13,7 @@ from typing import Optional, Tuple
 import numpy as np
 
 from .config import SilverBulletConfig
+from .news_calendar import is_news_day
 from .indicators import (
     detect_buyside_sweep,
     detect_sellside_sweep,
@@ -115,6 +116,10 @@ class SignalGenerator:
             return None
 
         cfg = self._cfg
+
+        # Skip signal generation entirely on high-impact news days when configured.
+        if cfg.skip_news_days and is_news_day(date_str):
+            return None
         key = (date_str, window_id)
         if key not in self._sessions:
             self._sessions[key] = _SessionState()

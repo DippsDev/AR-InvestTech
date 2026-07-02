@@ -13,7 +13,7 @@ interface Props {
 const DEFAULTS: S = {
   login: "", server: "", symbol: "US30", risk_pct: "1.0",
   daily_loss_limit_usd: "3.0", max_trades_per_day: "2", max_drawdown_pct: "50.0",
-  aggressive: false, off_hours: false,
+  aggressive: false, off_hours: false, news: true,
 };
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -65,7 +65,7 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs }: 
     </div>
   );
 
-  const tog = (k: "aggressive" | "off_hours", label: string, sub: string, last = false) => (
+  const tog = (k: "aggressive" | "off_hours" | "news", label: string, sub: string, last = false) => (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
       padding: "12px 0", borderBottom: last ? "none" : "1px solid #F3F4F6",
@@ -138,7 +138,8 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs }: 
         </div>
         <div style={{ padding: "6px 16px" }}>
           {tog("aggressive", "Aggressive Mode",   "2–3 trades/day: lower filters + London session · restart bot to apply")}
-          {tog("off_hours",  "Off-Hours Trading", "Trade outside session windows · max 3 fills/day · closes 17:00 ET · restart bot to apply", true)}
+          {tog("off_hours",  "Off-Hours Trading", "Trade outside session windows · max 3 fills/day · closes 17:00 ET · restart bot to apply")}
+          {tog("news",       "Skip News Days",    "Pause all entries on NFP/FOMC/CPI/GDP release days · restart bot to apply", true)}
         </div>
       </div>
     </>

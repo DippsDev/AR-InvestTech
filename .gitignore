@@ -13,6 +13,7 @@ __pycache__/
 
 # Logs & data outputs
 logs/*.log
+silver_bullet/logs/*.log
 trades.csv
 backtests/*.json
 backtests/*.csv

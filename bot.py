@@ -27,6 +27,8 @@ class SilverBulletBot:
             ]
         if config.SB_OFF_HOURS:
             cfg.off_hours_trading = True
+        # Respect the SB_NEWS env toggle — when True, no new trades on high-impact news days.
+        cfg.skip_news_days = config.SB_NEWS
         # Silver Bullet defaults to limit orders for better entry prices.
         # Market-order mode is only enabled for the explicit sweep-entry demo mode.
         if config.SB_SWEEP_ENTRY:
@@ -65,7 +67,8 @@ class SilverBulletBot:
         self.running = True
         windows_str = ", ".join(f"{s}-{e} ET" for s, e in self.cfg.windows)
         order_type = "MARKET" if self.cfg.use_market_order else "LIMIT"
-        logger.info(f"Bot ready | Symbol: {self._symbol} | Windows: {windows_str} | Order: {order_type}")
+        news_mode = "SKIP NEWS" if self.cfg.skip_news_days else "NEWS ALLOWED"
+        logger.info(f"Bot ready | Symbol: {self._symbol} | Windows: {windows_str} | Order: {order_type} | {news_mode}")
         return True
 
     def run(self) -> None:

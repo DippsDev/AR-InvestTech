@@ -98,6 +98,7 @@ class SettingsBody(BaseModel):
     max_drawdown_pct: str = "50.0"
     aggressive: bool = False
     off_hours:  bool = False
+    news:       bool = True
 
 @app.post("/settings")
 def save_settings(body: SettingsBody):
