@@ -30,7 +30,12 @@ export default function TradeHistoryTable({ trades }: Props) {
         </span>
       </div>
 
-      <div className="dark-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto" }}>
+      {/* A 7-column table with width:100% still overflows its container on
+          narrow screens — table auto-layout won't compress cell content
+          below its natural size. Giving this div its own overflowX:auto
+          keeps that scroll self-contained (swipe to see more columns)
+          instead of leaking out and dragging the whole page sideways. */}
+      <div className="dark-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "auto" }}>
         {trades.length === 0 ? (
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
             <span style={{ fontSize: 12, color: "var(--dash-text-dim)" }}>No closed trades in the last 30 days.</span>

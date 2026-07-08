@@ -78,6 +78,11 @@ export default function EventCalendar({ events }: Props) {
         border: "1px solid var(--dash-border)",
         borderRadius: 8,
         padding: "12px 0 12px 14px",
+        // A flex-item sibling of .dash-scroll-area with no overflow/min-width
+        // guard of its own — every other direct child in this column gets
+        // one via a CSS class, this one had none since it's unclassed.
+        overflow: "hidden",
+        minWidth: 0,
       }}
     >
       <InfiniteMarquee
