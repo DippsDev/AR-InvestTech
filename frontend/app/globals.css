@@ -324,9 +324,23 @@ html, body {
     overflow-y: auto;
     overflow-x: hidden;
   }
+  /* dash-body/dash-scroll-area used a blanket `overflow: visible` so mobile
+     gets one continuous page scroll instead of a nested inner scrollbar —
+     but that also un-clips the X axis, and every ancestor above them relies
+     on that clip actually happening close to the content. iOS Safari in
+     particular can still let the page pan sideways to reveal an overflowing
+     descendant even when a *distant* ancestor sets overflow-x:hidden; the
+     fix is to keep the clip boundary right here, at the axis that actually
+     needs it, rather than several levels up. Splitting the shorthand keeps
+     vertical content flowing to the page scroll while horizontal overflow
+     is caught immediately instead of being trusted to bubble all the way
+     up to .full-viewport uncaught.
+     Real cause of any specific overflow is still worth finding and fixing —
+     this is the safety net, not a substitute for that. */
   .dash-body {
     flex-direction: column !important;
-    overflow: visible !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
   }
   /* Flex/grid children default to min-width:auto, which refuses to shrink
      below the widest unwrappable descendant — that forces this whole chain
@@ -338,8 +352,12 @@ html, body {
   .dash-chat-col {
     min-width: 0 !important;
   }
+  .dash-main-col {
+    overflow-x: hidden !important;
+  }
   .dash-scroll-area {
-    overflow: visible !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
   }
   .dash-scroll-area > div {
     min-width: 0;
@@ -370,9 +388,6 @@ html, body {
 }
 
 @media (max-width: 480px) {
-  .event-track .dash-card {
-    width: 280px !important;
-  }
   .book-periods {
     gap: 2px !important;
   }

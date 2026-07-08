@@ -143,7 +143,12 @@ export default function Dashboard(props: Props) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                // min(280px, 100%) instead of a bare 280px: a plain minmax
+                // floor still forces a 280px-wide track even when the
+                // container itself is narrower (e.g. a phone screen minus
+                // padding), which is real overflow, not just a visual
+                // clip — min() lets the track actually shrink to fit.
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
                 gap: 14,
               }}
             >
