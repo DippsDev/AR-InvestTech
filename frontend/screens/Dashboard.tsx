@@ -1,250 +1,217 @@
 "use client";
-import { useState } from "react";
-import type { LogEntry, Stats } from "@/lib/api";
+import type { LogEntry, MarketReading, Stats, Trade } from "@/lib/api";
+import TickerBar from "@/components/dashboard/TickerBar";
+import TopStoryCard from "@/components/dashboard/TopStoryCard";
+import BookCard from "@/components/dashboard/BookCard";
+import OpenTradeCard from "@/components/dashboard/OpenTradeCard";
+import TradeHistoryTable from "@/components/dashboard/TradeHistoryTable";
+import EventCalendar from "@/components/dashboard/EventCalendar";
+import BotLog from "@/components/dashboard/BotLog";
+import PersonaCard from "@/components/dashboard/PersonaCard";
+import MarketHeatmap from "@/components/dashboard/MarketHeatmap";
+import { PERSONAS, PERSONA_ORDER } from "@/lib/personas";
+import type { Book, CalendarEvent } from "@/lib/dashboardData";
 
 interface Props {
   running: boolean;
   log: LogEntry[];
   stats: Stats | null;
+  trades: Trade[];
+  calendarEvents: CalendarEvent[];
+  marketReadings: MarketReading[];
+  onOpenSettings: () => void;
+  onDisconnect: () => void;
+  onStartBot: () => Promise<void>;
+  onStopBot: () => Promise<void>;
 }
 
-function Card({ label, value, note, noteGreen }: { label: string; value: string; note?: string; noteGreen?: boolean }) {
+function parseMoney(s?: string | null): number {
+  if (!s) return 0;
+  const n = parseFloat(s.replace(/[^0-9.-]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}
+
+function latestNote(log: LogEntry[], speaker: string, idle: string): { text: string; time?: string } {
+  const entry = log.find(e => e.speaker === speaker);
+  return entry ? { text: entry.x, time: entry.t } : { text: idle, time: undefined };
+}
+
+export default function Dashboard(props: Props) {
+  const { stats, log, trades } = props;
+  const balance = parseMoney(stats?.balance);
+  const equity = parseMoney(stats?.equity);
+  const profit = parseMoney(stats?.profit);
+
+  const accountBook: Book = {
+    label: "ACCOUNT",
+    cash: balance,
+    value: equity,
+    todayChange: profit,
+    todayChangePct: balance ? (profit / balance) * 100 : 0,
+    data: [],
+    color: profit >= 0 ? "#22C55E" : "#EF4444",
+  };
+
+  // Must match backend's `strftime("%b %d")` exactly (zero-padded day) so
+  // today's trades actually match on the 1st-9th of the month.
+  const today = new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+  const todaysTrades = trades.filter(t => t.date === today);
+  const wins = trades.filter(t => t.win).length;
+  const losses = trades.filter(t => !t.win).length;
+  const maxTrades = stats?.max_trades ? parseInt(stats.max_trades, 10) : undefined;
+  const newsPaused = Boolean(stats?.session?.includes("News pause"));
+
+  const personaData: Record<string, { badge?: { text: string; color: string } }> = {
+    Boss: {
+      badge: { text: stats?.running ? "LIVE" : "PAUSED", color: stats?.running ? "#22C55E" : "#6B7280" },
+    },
+    Trader: {
+      badge: stats?.open_trade
+        ? { text: `${stats.open_trade.side} OPEN`, color: stats.open_trade.side === "BUY" ? "#22C55E" : "#EF4444" }
+        : { text: "NO OPEN TRADE", color: "#6B7280" },
+    },
+    Risk: {
+      badge: {
+        text: maxTrades != null ? `${todaysTrades.length}/${maxTrades} TODAY` : `${todaysTrades.length} TODAY`,
+        color: maxTrades != null && todaysTrades.length >= maxTrades ? "#EF4444" : "#F97316",
+      },
+    },
+    "News Guard": {
+      badge: { text: newsPaused ? "NEWS PAUSE" : "CLEAR", color: newsPaused ? "#EF4444" : "#22C55E" },
+    },
+    Grader: {
+      badge: { text: `${wins}W / ${losses}L`, color: "#8B5CF6" },
+    },
+    Scanner: {
+      badge: { text: stats?.session ?? "--", color: "#3B82F6" },
+    },
+  };
+
   return (
-    <div style={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 8, padding: "14px 16px" }}>
-      <div style={{ fontSize: 10, color: "#9CA3AF", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>{label}</div>
-      <div style={{ fontSize: 22, fontWeight: 700, color: "#111827", lineHeight: 1 }}>{value}</div>
-      {note && <div style={{ fontSize: 10, color: noteGreen ? "#16A34A" : "#9CA3AF", marginTop: 4 }}>{note}</div>}
-    </div>
-  );
-}
-
-function tagColor(k: LogEntry["k"]) {
-  if (k === "win") return "#22C55E";
-  if (k === "sig") return "#60A5FA";
-  if (k === "warn") return "#F87171";
-  return "#9CA3AF";
-}
-
-function ExpandIcon() {
-  return (
-    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <polyline points="15 3 21 3 21 9" />
-      <polyline points="9 21 3 21 3 15" />
-      <line x1="21" y1="3" x2="14" y2="10" />
-      <line x1="3" y1="21" x2="10" y2="14" />
-    </svg>
-  );
-}
-
-function CompressIcon() {
-  return (
-    <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <polyline points="4 14 10 14 10 20" />
-      <polyline points="20 10 14 10 14 4" />
-      <line x1="10" y1="14" x2="3" y2="21" />
-      <line x1="14" y1="10" x2="21" y2="3" />
-    </svg>
-  );
-}
-
-export default function Dashboard({ running, log, stats }: Props) {
-  const [logExpanded, setLogExpanded] = useState(false);
-
-  const now  = new Date().toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-  const clock = new Date().toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-  const logReversed = [...log].reverse();
-
-  const openTrade = stats?.open_trade ?? null;
-  const hasOpenTrade = openTrade != null;
-
-  const openPillStyle = hasOpenTrade
-    ? { color: "#16A34A", background: "#DCFCE7", padding: "2px 8px", borderRadius: 4 }
-    : { color: "#6B7280", background: "#F3F4F6", padding: "2px 8px", borderRadius: 4 };
-
-  const logCardStyle: React.CSSProperties = logExpanded
-    ? {
-        position: "absolute",
-        top: 0, left: 0, right: 0, bottom: 0,
-        zIndex: 20,
-        borderRadius: 0,
-        background: "#FFFFFF",
-        border: "none",
+    <div
+      style={{
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
-      }
-    : {
-        background: "#FFFFFF",
-        border: "1px solid #E5E7EB",
-        borderRadius: 8,
-        overflow: "hidden",
-        flex: 1,
-        display: "flex",
-        flexDirection: "column",
-        minHeight: 0,
-      };
+        height: "100%",
+        background: "var(--dash-bg)",
+        color: "var(--dash-text)",
+      }}
+    >
+      <TickerBar
+        running={props.running}
+        stats={stats}
+        onOpenSettings={props.onOpenSettings}
+        onDisconnect={props.onDisconnect}
+        onStartBot={props.onStartBot}
+        onStopBot={props.onStopBot}
+      />
 
-  const pnlIsPositive = !stats?.profit.startsWith("-");
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14, minHeight: "calc(100svh - 80px)" }}>
-
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: "#111827" }}>Dashboard</div>
-          <div style={{ fontSize: 12, color: "#6B7280", marginTop: 2 }}>{now} — {stats?.session ?? "—"}</div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#6B7280" }}>
-          <span style={{ background: "#111827", color: "#FFFFFF", padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, letterSpacing: ".05em" }}>{stats?.symbol ?? "US30"}</span>
-          <span className="mob-hide-inline">
-            {stats?.connected ? "MT5 Connected" : "MT5 Disconnected"}
-            {stats?.connected && (
-              <>
-                {" · "}
-                <span style={{ color: stats.market_open ? "#16A34A" : "#DC2626", fontWeight: 600 }}>
-                  {stats.market_open ? "Market Open" : "Market Closed"}
-                </span>
-              </>
-            )}
-            {" · "}{clock}
-          </span>
-        </div>
-      </div>
-
-      {/* Stat cards */}
-      <div className="grid-4">
-        <Card label="Balance"     value={stats?.balance ?? "--"}      note={stats ? `Equity ${stats.equity}` : undefined} />
-        <Card label="Today P&L"   value={stats?.profit  ?? "--"}      noteGreen={pnlIsPositive} />
-        <Card label="Win Rate"    value="—"                            note="Calculating…" />
-        <Card label="Open Trades" value={stats?.open_trades ?? "0"}   note={`Max ${stats?.max_trades ?? "1"} allowed`} />
-      </div>
-
-      {/* Active trade + Session info */}
-      <div className="grid-2">
-
-        {/* Active trade */}
-        <div style={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#111827", textTransform: "uppercase", letterSpacing: ".05em" }}>Active Trade</span>
-            <span style={{ fontSize: 11, fontWeight: 600, ...openPillStyle }}>{hasOpenTrade ? "OPEN" : "FLAT"}</span>
-          </div>
-          <div style={{ padding: "14px 16px" }}>
-            {hasOpenTrade ? (
-              <>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 10px", fontSize: 12 }}>
-                  <div>
-                    <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Symbol / Side</div>
-                    <div style={{ fontWeight: 600, color: "#111827" }}>
-                      {openTrade.symbol} · <span style={{ color: openTrade.side === "BUY" ? "#16A34A" : "#DC2626" }}>{openTrade.side}</span>
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Float P&L</div>
-                    <div style={{ fontWeight: 700, color: openTrade.float_pnl.startsWith("-") ? "#DC2626" : "#16A34A" }}>{openTrade.float_pnl}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Entry</div>
-                    <div style={{ fontWeight: 600, color: "#111827" }}>{openTrade.entry}</div>
-                  </div>
-                  <div>
-                    <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>Stop / Target</div>
-                    <div style={{ fontWeight: 600 }}>
-                      <span style={{ color: "#DC2626" }}>{openTrade.sl}</span> / <span style={{ color: "#16A34A" }}>{openTrade.tp}</span>
-                    </div>
-                  </div>
-                </div>
-                <div style={{ marginTop: 12, fontSize: 11, color: "#6B7280", display: "flex", alignItems: "center", gap: 6 }}>
-                  <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#FBBF24", display: "inline-block" }} />
-                  {openTrade.breakeven ? "Breakeven set · " : ""}Lot {openTrade.lots} · {openTrade.symbol}
-                </div>
-              </>
-            ) : (
-              <div style={{ textAlign: "center", padding: "18px 0", color: "#9CA3AF" }}>
-                <svg width="28" height="28" fill="none" stroke="#D1D5DB" strokeWidth="1.6" viewBox="0 0 24 24" style={{ marginBottom: 8, display: "block", margin: "0 auto 8px" }}>
-                  <circle cx="12" cy="12" r="9" /><path d="M12 8v4l2.5 1.5" />
-                </svg>
-                <div style={{ fontSize: 12, fontWeight: 600, color: "#6B7280" }}>No open positions</div>
-                <div style={{ fontSize: 11, color: "#9CA3AF", marginTop: 2 }}>{running ? "Scanning for signals…" : "Start the bot to begin scanning for signals"}</div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Session info */}
-        <div style={{ background: "#FFFFFF", border: "1px solid #E5E7EB", borderRadius: 8, overflow: "hidden" }}>
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid #E5E7EB" }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#111827", textTransform: "uppercase", letterSpacing: ".05em" }}>Session Info</span>
-          </div>
-          <div style={{ padding: "14px 16px" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12 }}>
-              {([
-                ["Session",         stats?.session        ?? "--", ""],
-                ["Timeframes",      stats?.timeframe      ?? "M5", ""],
-                ["Strategy",        "Silver Bullet",               "#16A34A"],
-                ["Risk / Trade",    stats?.risk_pct ? `${stats.risk_pct}%` : "1%", ""],
-                ["Market Status",   stats?.market_open === false ? "Closed" : stats?.market_open === true ? "Open" : "--",
-                  stats?.market_open === false ? "#DC2626" : stats?.market_open === true ? "#16A34A" : ""],
-                ["Next Refresh",    stats?.next_refresh   ?? "--", ""],
-              ] as [string, string, string][]).map(([lbl, val, color]) => (
-                <div key={lbl}>
-                  <div style={{ color: "#9CA3AF", fontSize: 10, textTransform: "uppercase", letterSpacing: ".04em", marginBottom: 2 }}>{lbl}</div>
-                  <div style={{ fontWeight: 600, color: color || "#111827" }}>{val}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Live log */}
-      <div className={logExpanded ? "log-expand-anim" : undefined} style={logCardStyle}>
+      <div
+        className="dash-body"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          display: "flex",
+          overflow: "hidden",
+        }}
+      >
+        {/* Main content column */}
         <div
-          onClick={() => setLogExpanded(e => !e)}
+          className="dash-main-col"
           style={{
-            padding: "12px 16px",
-            borderBottom: "1px solid #E5E7EB",
+            flex: 1,
+            minWidth: 0,
             display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            cursor: "pointer",
-            userSelect: "none",
-            flexShrink: 0,
+            flexDirection: "column",
+            padding: 14,
+            gap: 14,
           }}
         >
-          <span style={{ fontSize: 12, fontWeight: 600, color: "#111827", textTransform: "uppercase", letterSpacing: ".05em" }}>Live Log</span>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ fontSize: 11, color: "#9CA3AF" }}>{running ? "streaming · live" : "paused"}</span>
-            <span style={{ color: "#9CA3AF", display: "flex" }}>
-              {logExpanded ? <CompressIcon /> : <ExpandIcon />}
-            </span>
-          </div>
-        </div>
-        <div className="dark-scroll" style={{
-          fontFamily: "ui-monospace, Consolas, monospace",
-          fontSize: 11,
-          background: "#111827",
-          color: "#D1D5DB",
-          padding: "12px 14px",
-          flex: 1,
-          overflowY: "auto",
-          lineHeight: 1.7,
-          minHeight: 0,
-        }}>
-          {logReversed.length === 0 ? (
-            <span style={{ color: "#4B5563" }}>Waiting for bot activity…</span>
-          ) : (
-            logReversed.map((e, i) => (
-              <div key={i} className="animate-row-in">
-                <span style={{ color: "#6B7280" }}>{e.t}</span>{" "}
-                <span style={{ fontWeight: 600, color: tagColor(e.k) }}>{e.tag}</span>{" "}
-                {e.x}
+          {/* Scrollable content area */}
+          <div
+            className="dash-scroll-area dark-scroll"
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: "auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: 14,
+            }}
+          >
+            {/* Top row: bot status + account + open trade */}
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                gap: 14,
+              }}
+            >
+              <TopStoryCard stats={stats} />
+              <BookCard book={accountBook} />
+              <OpenTradeCard stats={stats} />
+            </div>
+
+            {/* The office — one card per persona, always visible. Flexbox
+                (not grid) on purpose: grid's auto-fit tracks can't express
+                "give the heatmap all the leftover width on whatever line it
+                lands on" without knowing the column count in advance. Flex
+                items sharing a wrapped line distribute growth among
+                themselves automatically, whatever that count turns out to be. */}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 10,
+              }}
+            >
+              {PERSONA_ORDER.map(name => {
+                const persona = PERSONAS[name];
+                const note = latestNote(log, name, persona.idleNote);
+                return (
+                  <div key={name} style={{ flex: "1 1 200px", minWidth: 0 }}>
+                    <PersonaCard
+                      persona={persona}
+                      badge={personaData[name]?.badge}
+                      note={note.text}
+                      time={note.time}
+                      active={props.running}
+                    />
+                  </div>
+                );
+              })}
+              {/* Grows to absorb whatever's left on its line — a full row to
+                  itself if the personas above filled evenly, or the tail end
+                  of the last persona row otherwise. */}
+              <div style={{ flex: "3 1 320px", minWidth: 0 }}>
+                <MarketHeatmap readings={props.marketReadings} />
               </div>
-            ))
-          )}
+            </div>
+
+            {/* Trade history */}
+            <div style={{ flex: 1, minHeight: 320 }}>
+              <TradeHistoryTable trades={props.trades} />
+            </div>
+          </div>
+
+          {/* Event calendar — fixed at bottom of main column */}
+          <EventCalendar events={props.calendarEvents} />
+        </div>
+
+        {/* Bot activity column */}
+        <div
+          className="dash-chat-col dark-scroll"
+          style={{
+            width: 360,
+            flexShrink: 0,
+            height: "100%",
+            overflowY: "auto",
+            padding: "14px 14px 14px 0",
+          }}
+        >
+          <BotLog log={props.log} running={props.running} />
         </div>
       </div>
-
     </div>
   );
 }

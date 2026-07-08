@@ -85,39 +85,44 @@ The bot runs as a background thread managed by the FastAPI server. The frontend 
 ```
 ar-investments/
 │
-├── bot.py                    # Bot entry point — runs standalone or via bridge
-├── bridge.py                 # Shared business logic (license, MT5, bot lifecycle, log)
-├── server.py                 # FastAPI REST API — run this to serve the frontend
-├── config.py                 # Environment config (MT5 credentials, symbol, log path)
-├── requirements.txt          # Python dependencies
-├── .env                      # Local secrets (not committed) — see Configuration
-│
-├── silver_bullet/            # Strategy module
-│   ├── config.py             # All strategy tunables in one dataclass
-│   ├── strategy.py           # Signal generation: sweep → FVG → Signal dataclass
-│   ├── indicators.py         # Swing detection, sweep detection, FVG detection
-│   ├── live_adapter.py       # MT5 execution: places limits, manages BE/trail/time-exit
-│   ├── backtest.py           # Event-driven backtesting engine
-│   ├── data.py               # Historical bar fetching from MT5
-│   ├── metrics.py            # Backtest performance metrics (Sharpe, drawdown, etc.)
-│   ├── news_calendar.py      # High-impact news day detection (NFP/FOMC/CPI/GDP)
-│   ├── plot_results.py       # Matplotlib equity curve and trade visualisation
-│   ├── run_backtest.py       # CLI runner for backtests
-│   └── tests/
-│       └── test_indicators.py
-│
-├── src/                      # Shared utilities
-│   ├── data_collector.py     # MT5 connect/disconnect, account info, symbol lookup
-│   └── logger.py             # Rotating file logger (logs/trades.log)
-│
-├── logs/
-│   └── trades.log            # Runtime log output
-│
-├── trades.csv                # Exported trade history (optional)
-├── us30_m5_200d.csv          # Sample US30 M5 data (200 days)
-├── us30_m5_3y.csv            # Sample US30 M5 data (3 years)
-├── fetch_mt5_data.py         # One-off script to pull historical data from MT5
-├── optimize.py               # Parameter optimisation script
+├── backend/                  # Python backend (FastAPI + bot + strategy)
+│   ├── bot.py                # Bot entry point — runs standalone or via bridge
+│   ├── bridge.py             # Shared business logic (license, MT5, bot lifecycle, log)
+│   ├── server.py             # FastAPI REST API — run this to serve the frontend
+│   ├── config.py             # Environment config (MT5 credentials, symbol, log path)
+│   ├── requirements.txt      # Python dependencies
+│   ├── .env                  # Local secrets (not committed) — see Configuration
+│   │
+│   ├── silver_bullet/        # Strategy module
+│   │   ├── config.py         # All strategy tunables in one dataclass
+│   │   ├── strategy.py       # Signal generation: sweep → FVG → Signal dataclass
+│   │   ├── indicators.py     # Swing detection, sweep detection, FVG detection
+│   │   ├── live_adapter.py   # MT5 execution: places limits, manages BE/trail/time-exit
+│   │   ├── backtest.py       # Event-driven backtesting engine
+│   │   ├── data.py           # Historical bar fetching from MT5
+│   │   ├── metrics.py        # Backtest performance metrics (Sharpe, drawdown, etc.)
+│   │   ├── news_calendar.py  # High-impact news day detection (NFP/FOMC/CPI/GDP)
+│   │   ├── plot_results.py   # Matplotlib equity curve and trade visualisation
+│   │   ├── run_backtest.py   # CLI runner for backtests
+│   │   └── tests/
+│   │       └── test_indicators.py
+│   │
+│   ├── src/                  # Shared utilities
+│   │   ├── data_collector.py # MT5 connect/disconnect, account info, symbol lookup
+│   │   └── logger.py         # Rotating file logger (logs/trades.log)
+│   │
+│   ├── data/                 # CSV datasets and exported trade history
+│   │   ├── us30_m5_200d.csv  # Sample US30 M5 data (200 days)
+│   │   ├── us30_m5_3y.csv    # Sample US30 M5 data (3 years)
+│   │   └── trades.csv        # Exported trade history (optional)
+│   │
+│   ├── logs/
+│   │   └── trades.log        # Runtime log output
+│   │
+│   ├── backtests/            # Backtest scripts and results
+│   ├── packaging/            # PyInstaller / installer files
+│   ├── build/  dist/         # PyInstaller build artifacts
+│   └── fetch_mt5_data.py     # One-off script to pull historical data from MT5
 │
 └── frontend/                 # Next.js dashboard
     ├── app/
@@ -133,7 +138,7 @@ ar-investments/
     ├── lib/
     │   └── api.ts            # API client + mock data (used when backend is offline)
     ├── components/
-    │   └── Toast.tsx         # Toast notification component
+    │   └── dashboard/        # Dashboard section components
     └── package.json
 ```
 
@@ -196,7 +201,7 @@ cd AR-InvestTech
 ```bash
 python -m venv .venv
 .venv\Scripts\activate          # Windows
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 ```
 
 ### 3. Frontend
@@ -210,7 +215,7 @@ npm install
 
 ## Configuration
 
-Create a `.env` file in the project root (next to `server.py`):
+Create a `.env` file in the `backend/` folder (next to `server.py`):
 
 ```env
 MT5_LOGIN=12345678
@@ -241,7 +246,7 @@ SB_NEWS=true
 
 > `.env` is listed in `.gitignore` and is never committed.
 
-**Strategy tunables** live in [`silver_bullet/config.py`](silver_bullet/config.py) as a single `SilverBulletConfig` dataclass. Edit that file to adjust swing lookback, FVG minimum size, R:R ratio, trail parameters, etc.
+**Strategy tunables** live in [`backend/silver_bullet/config.py`](backend/silver_bullet/config.py) as a single `SilverBulletConfig` dataclass. Edit that file to adjust swing lookback, FVG minimum size, R:R ratio, trail parameters, etc.
 
 ---
 
@@ -252,7 +257,8 @@ Both the backend server and the frontend dev server must be running at the same 
 ### Terminal 1 — Python backend
 
 ```bash
-# From the project root, with .venv activated
+# From the backend/ folder, with .venv activated
+cd backend
 python server.py
 ```
 
@@ -270,6 +276,7 @@ Dashboard opens at `http://localhost:3000`.
 ### Running the bot standalone (no frontend)
 
 ```bash
+cd backend
 python bot.py
 ```
 
@@ -322,12 +329,13 @@ python optimize.py
 
 Backtest results are plotted with Matplotlib (`silver_bullet/plot_results.py`) showing the equity curve and per-trade annotations. Sample datasets are included:
 
-- `us30_m5_200d.csv` — 200 days of US30 M5 data
-- `us30_m5_3y.csv` — 3 years of US30 M5 data
+- `backend/data/us30_m5_200d.csv` — 200 days of US30 M5 data
+- `backend/data/us30_m5_3y.csv` — 3 years of US30 M5 data
 
 To pull fresh data directly from your MT5 terminal:
 
 ```bash
+cd backend
 python fetch_mt5_data.py
 ```
 
@@ -339,7 +347,7 @@ The app requires a license key in the format `ARB-XXXX-XXXX-XXXX`. On first laun
 
 1. Open the dashboard at `http://localhost:3000`
 2. Enter your license key on the Activation screen
-3. The key is validated and stored in a local `.license` file
+3. The key is validated and stored in `backend/.license`
 4. On subsequent launches the key is read automatically
 
 > The activation server integration is stubbed (`TODO` in `bridge.py`). Any key matching the `ARB-XXXX-XXXX-XXXX` format is currently accepted.
@@ -350,7 +358,7 @@ The app requires a license key in the format `ARB-XXXX-XXXX-XXXX`. On first laun
 
 - **Mock vs Live**: `frontend/lib/api.ts` exports a `mockApi` object with realistic US30 data. When wiring up the real backend, swap `mockApi` calls in `page.tsx` for `fetch` calls to the FastAPI endpoints.
 - **Magic number**: Live bot orders use magic number `202406122` to distinguish them from manual trades. All position queries filter by this magic number.
-- **Bot logger**: The bot logs to `logs/trades.log` via a rotating file handler. The `BotBridge` in `bridge.py` also intercepts these log records and routes them into the in-memory log buffer that `/log` serves to the frontend.
+- **Bot logger**: The bot logs to `backend/logs/trades.log` via a rotating file handler. The `BotBridge` in `backend/bridge.py` also intercepts these log records and routes them into the in-memory log buffer that `/log` serves to the frontend.
 - **DST handling**: Session windows use `America/New_York` via `zoneinfo` — daylight saving is handled automatically.
 
 ---

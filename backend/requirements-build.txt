@@ -1,0 +1,3 @@
+# Build-time only — not shipped, not needed to run the app from source.
+# Install with: pip install -r requirements.txt -r requirements-build.txt
+pyinstaller>=6.0

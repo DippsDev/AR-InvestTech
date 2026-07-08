@@ -1,4 +1,17 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+import { getConnection } from "./connection";
+import type { CalendarEvent } from "./dashboardData";
+
+// Every call reads the connection fresh (never cached at module scope) and
+// attaches the shared-secret token the backend now requires on every route.
+async function req(path: string, init?: RequestInit): Promise<Response> {
+  const { baseUrl, token } = getConnection();
+  const headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string> | undefined),
+  };
+  if (token) headers["X-API-Token"] = token;
+  if (init?.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
+  return fetch(`${baseUrl}${path}`, { ...init, headers });
+}
 
 export interface Stats {
   running: boolean;
@@ -26,6 +39,7 @@ export interface Stats {
   max_trades?: string;
   timeframe?: string;
   market_open?: boolean;
+  price?: string | null;
 }
 
 export interface LogEntry {
@@ -33,6 +47,7 @@ export interface LogEntry {
   tag: string;
   k: "win" | "sig" | "inf" | "warn";
   x: string;
+  speaker: string;
 }
 
 export interface Trade {
@@ -48,6 +63,12 @@ export interface Trade {
   pnl_text?: string;
 }
 
+export interface MarketReading {
+  label: string;
+  price: string | null;
+  change_pct: number | null;
+}
+
 export interface Settings {
   login: string;
   server: string;
@@ -59,31 +80,37 @@ export interface Settings {
   aggressive: boolean;
   off_hours:  boolean;
   news:       boolean;
+  // Write-only: never populated from the backend. Blank means "don't change".
+  password?: string;
 }
 
-export const mockApi = {
+export const apiClient = {
   async checkLicense() {
     try {
-      const r = await fetch(`${BASE}/license`);
+      const r = await req("/license");
       return r.json();
     } catch {
       return { ok: false };
     }
   },
   async validateLicense(key: string) {
-    try {
-      const r = await fetch(`${BASE}/license/validate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ key }),
-      });
-      return r.json();
-    } catch {
-      // Fallback to build-time env key if backend is unreachable.
+    // No backend configured yet: validate locally against the build-time env key.
+    if (!getConnection().baseUrl) {
       await new Promise(r => setTimeout(r, 800));
       const expected = process.env.NEXT_PUBLIC_LICENSE_KEY;
       if (!expected || key !== expected) return { ok: false, error: "Invalid license key." };
       return { ok: true };
+    }
+    try {
+      const r = await req("/license/validate", {
+        method: "POST",
+        body: JSON.stringify({ key }),
+      });
+      if (r.status === 401) return { ok: false, error: "Backend rejected the API token." };
+      if (!r.ok) return { ok: false, error: "Backend rejected the request." };
+      return r.json();
+    } catch {
+      return { ok: false, error: "Backend not reachable. Check the backend URL in Settings." };
     }
   },
   async validateActivation(key: string) {
@@ -94,47 +121,67 @@ export const mockApi = {
 
   async connectMt5(): Promise<{ ok: boolean; server?: string; login?: string; balance?: string; error?: string }> {
     try {
-      const r = await fetch(`${BASE}/mt5/connect`, { method: "POST" });
+      const r = await req("/mt5/connect", { method: "POST" });
+      if (r.status === 401) return { ok: false, error: "Backend rejected the API token." };
       return r.json();
     } catch {
-      return { ok: false, error: "Backend not reachable. Is python server.py running?" };
+      return { ok: false, error: "Backend not reachable. Check the backend URL in Settings." };
     }
   },
 
   async startBot(): Promise<{ running: boolean }> {
-    const r = await fetch(`${BASE}/bot/start`, { method: "POST" });
+    const r = await req("/bot/start", { method: "POST" });
     return r.json();
   },
 
   async stopBot(): Promise<{ running: boolean }> {
-    const r = await fetch(`${BASE}/bot/stop`, { method: "POST" });
+    const r = await req("/bot/stop", { method: "POST" });
     return r.json();
   },
 
   async getStats(): Promise<Stats> {
-    const r = await fetch(`${BASE}/stats`);
+    const r = await req("/stats");
     return r.json();
   },
 
   async getLog(): Promise<LogEntry[]> {
-    const r = await fetch(`${BASE}/log`);
+    const r = await req("/log");
     return r.json();
   },
 
   async getTrades(): Promise<Trade[]> {
-    const r = await fetch(`${BASE}/trades`);
+    const r = await req("/trades");
     return r.json();
   },
 
+  async getCalendar(): Promise<CalendarEvent[]> {
+    try {
+      const r = await req("/calendar");
+      if (!r.ok) return [];
+      return r.json();
+    } catch {
+      return [];
+    }
+  },
+
+  async getMarket(): Promise<MarketReading[]> {
+    try {
+      const r = await req("/market");
+      if (!r.ok) return [];
+      return r.json();
+    } catch {
+      return [];
+    }
+  },
+
   async getSettings(): Promise<Settings> {
-    const r = await fetch(`${BASE}/settings`);
+    const r = await req("/settings");
     return r.json();
   },
 
   async saveSettings(data: Settings): Promise<{ ok: boolean }> {
-    const r = await fetch(`${BASE}/settings`, {
+    const r = await req("/settings", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     });
     return r.json();

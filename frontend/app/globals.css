@@ -77,7 +77,42 @@ body {
 ::-webkit-scrollbar-track { background: transparent; }
 .dark-scroll::-webkit-scrollbar-thumb { background: #374151; }
 
-.act-input::placeholder { color: var(--act-text-dim); opacity: 1; }
+.act-input::placeholder { color: var(--dash-text-dim); opacity: 1; }
+
+/* Activation screen background: `contain` (::after) keeps the whole logo
+   photo — all its text — on screen regardless of viewport aspect ratio, but
+   that alone leaves flat letterbox bars wherever the photo doesn't reach
+   the edges. ::before fills the full box with a blurred, oversized `cover`
+   copy of the same photo first, so those bars read as a soft continuation
+   of the image's own color/texture instead of a hard black edge. */
+.activation-bg {
+  position: relative;
+  isolation: isolate;
+}
+.activation-bg::before,
+.activation-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+}
+.activation-bg::before {
+  inset: -30px;
+  background-image: url("/70ddcfd5-b65d-4641-9b25-7d7c87ed6661.jpeg");
+  background-size: cover;
+  background-position: center 20%;
+  filter: blur(50px) brightness(0.52) saturate(1);
+  transform: scale(1.15);
+}
+.activation-bg::after {
+  z-index: -1;
+  background-image:
+    linear-gradient(180deg, rgba(11, 14, 17, 0.2), rgba(11, 14, 17, 0.45)),
+    url("/70ddcfd5-b65d-4641-9b25-7d7c87ed6661.jpeg");
+  background-size: cover, contain;
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+}
 
 @keyframes arb-spin      { to { transform: rotate(360deg); } }
 @keyframes arb-fade      { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
@@ -88,6 +123,264 @@ body {
 .animate-row-in  { animation: arb-rowin  0.2s ease both; }
 .spinner         { animation: arb-spin   0.7s linear infinite; }
 .log-expand-anim { animation: arb-log-up 0.38s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+/* ── Dashboard dark theme tokens ─────────────────── */
+:root {
+  --dash-bg:            #0B0E11;
+  --dash-card-bg:       #151A21;
+  --dash-card-bg-2:     #1C2129;
+  --dash-border:        #2A3039;
+  --dash-border-light:  #374151;
+  --dash-text:          #F3F4F6;
+  --dash-text-sub:      #D1D5DB;
+  --dash-text-muted:    #9CA3AF;
+  --dash-text-dim:      #6B7280;
+  --dash-up:            #22C55E;
+  --dash-up-dim:        #14532D;
+  --dash-down:          #EF4444;
+  --dash-down-dim:      #7F1D1D;
+  --dash-accent-blue:   #3B82F6;
+  --dash-accent-orange: #F97316;
+  --dash-accent-purple: #8B5CF6;
+  --dash-accent-yellow: #EAB308;
+}
+
+.app-main.app-main--dashboard {
+  background: var(--dash-bg);
+  color: var(--dash-text);
+  padding: 0;
+  overflow: hidden;
+}
+
+.full-viewport {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+  background: var(--dash-bg);
+}
+
+html, body {
+  overflow: hidden;
+}
+
+/* ── Dashboard interaction & responsiveness ──────── */
+.dash-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.dash-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  border-color: var(--dash-border-light);
+}
+
+/* Faint graph-paper backdrop behind each persona's pixel avatar. min-height
+   gives it real breathing room above/around the character — without it the
+   box is barely taller than the avatar itself and the grid has nowhere to show. */
+.persona-avatar-box {
+  width: 100%;
+  min-height: 150px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background-color: rgba(255, 255, 255, 0.015);
+  background-image:
+    repeating-linear-gradient(0deg,  rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 12px),
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.12) 0 1px, transparent 1px 12px);
+}
+
+/* Typing tap on the avatar's forearm pixels — SVG child transforms resolve
+   in the element's own user-unit space, so translateY(1px) here moves the
+   rect by exactly one grid cell, keeping the nudge crisp instead of blurry. */
+@keyframes avatar-type-tap {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(1px); }
+}
+.avatar-hand {
+  animation: avatar-type-tap 0.5s ease-in-out infinite;
+}
+.avatar-hand-r {
+  animation-delay: 0.25s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .avatar-hand {
+    animation: none;
+  }
+}
+
+/* Talking mouth flicker — the SVG "fill" presentation attribute sits at the
+   bottom of the cascade, so this class's animated fill wins over the static
+   color set inline per pixel without needing !important. */
+@keyframes avatar-talk {
+  0%, 100% { fill: #8B4A3E; }
+  50%      { fill: #3B1F18; }
+}
+.avatar-mouth {
+  animation: avatar-talk 0.45s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .avatar-mouth {
+    animation: none;
+  }
+}
+
+/* Monitor screen — replaces the old chart line with a snappy red/green
+   flash. The whole animation (name/duration/timing/iteration) is fully
+   self-contained here so it always runs; only animation-delay reads a
+   per-instance CSS variable (with a 0s fallback) so each PixelAvatar can
+   desync its own screen from every other one without the two rules ever
+   having to agree on who "owns" the shared shorthand. */
+@keyframes avatar-screen-flash {
+  0%, 45%  { fill: #22C55E; }
+  50%, 95% { fill: #EF4444; }
+  100%     { fill: #22C55E; }
+}
+.avatar-screen-flash {
+  animation: avatar-screen-flash 1.2s linear infinite;
+  animation-delay: var(--screen-delay, 0s);
+}
+@media (prefers-reduced-motion: reduce) {
+  .avatar-screen-flash {
+    animation: none;
+  }
+}
+
+@keyframes infinite-marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.infinite-marquee-track {
+  animation-name: infinite-marquee;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+.infinite-marquee-track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes dash-fade-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+.dash-animate-in {
+  animation: dash-fade-in 0.5s ease both;
+}
+
+.chart-line {
+  stroke-dasharray: 1000;
+  stroke-dashoffset: 1000;
+  animation: chart-draw 1s ease forwards;
+}
+.chart-area {
+  opacity: 0;
+  animation: chart-fade 0.8s ease 0.3s forwards;
+}
+
+@keyframes chart-draw {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes chart-fade {
+  to { opacity: 1; }
+}
+
+@media (max-width: 1100px) {
+  .dash-layout {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Ticker bar: the static label block (balance/P-L/LIVE-PAUSED)
+   doesn't shrink, so at phone width it eats most of the bar, leaving the
+   actual scrolling ticker almost no room. Drop the redundant balance/P-L
+   (already shown in the Account card below) and keep just the status. */
+@media (max-width: 640px) {
+  .ticker-static {
+    gap: 10px !important;
+    padding: 0 10px !important;
+  }
+  .ticker-static .ticker-detail {
+    display: none;
+  }
+}
+
+/* ── Dashboard mobile layout ─────────────────────── */
+@media (max-width: 900px) {
+  /* The unconditional `html, body { overflow: hidden }` above only gets
+     overflow-y patched back to auto on `body` elsewhere in this file — html
+     itself is left at overflow-y:hidden. Since body's height is auto (sized
+     to its content, no overflow of its own), there is nothing for body's
+     scroll to act on, and html silently clips anything taller than the
+     viewport with no way to reach it. Fix both explicitly. */
+  html, body {
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+  .full-viewport {
+    height: auto !important;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  .dash-body {
+    flex-direction: column !important;
+    overflow: visible !important;
+  }
+  /* Flex/grid children default to min-width:auto, which refuses to shrink
+     below the widest unwrappable descendant — that forces this whole chain
+     wider than the viewport even though the overflow is invisibly clipped.
+     Reset it at every level so layout actually respects 100% width on mobile. */
+  .dash-body,
+  .dash-main-col,
+  .dash-scroll-area,
+  .dash-chat-col {
+    min-width: 0 !important;
+  }
+  .dash-scroll-area {
+    overflow: visible !important;
+  }
+  .dash-scroll-area > div {
+    min-width: 0;
+  }
+  /* Same min-width:auto trap applies to grid items — every dash-card sits
+     directly in a grid or flex cell, so reset it broadly on mobile. */
+  .dash-card {
+    min-width: 0;
+  }
+  .dash-chat-col {
+    width: 100% !important;
+    flex-shrink: 1 !important;
+    height: auto !important;
+    max-height: 420px;
+    padding: 0 14px 14px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .dash-main-col {
+    padding: 10px !important;
+    gap: 10px !important;
+  }
+  .dash-chat-col {
+    padding: 0 10px 10px !important;
+    max-height: 380px;
+  }
+}
+
+@media (max-width: 480px) {
+  .event-track .dash-card {
+    width: 280px !important;
+  }
+  .book-periods {
+    gap: 2px !important;
+  }
+  .book-periods button {
+    padding: 3px 5px !important;
+    font-size: 9px !important;
+  }
+}
 
 /* ── Layout containers ───────────────────────────── */
 .app-root  { height: 100%; display: flex; flex-direction: column; }
@@ -184,3 +477,5 @@ body {
   .grid-4          { gap: 6px; }
   .grid-2          { gap: 8px; }
 }
+
+

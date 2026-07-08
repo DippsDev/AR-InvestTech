@@ -1,437 +1,156 @@
 "use client";
-import { useState, useEffect, useCallback } from "react";
-import { mockApi, type Stats, type Trade, type Settings, type LogEntry } from "@/lib/api";
-import Activation   from "@/screens/Activation";
-import Dashboard    from "@/screens/Dashboard";
-import Trades       from "@/screens/Trades";
-import Performance  from "@/screens/Performance";
-import SettingsPage from "@/screens/Settings";
-import Toast        from "@/components/Toast";
+import { useCallback, useState, useEffect } from "react";
+import { apiClient, type LogEntry, type MarketReading, type Stats, type Trade } from "@/lib/api";
+import { clearConnection } from "@/lib/connection";
+import type { CalendarEvent } from "@/lib/dashboardData";
+import Activation from "@/screens/Activation";
+import Dashboard from "@/screens/Dashboard";
+import SettingsScreen from "@/screens/Settings";
 
-type Screen = "activation" | "dashboard" | "trades" | "performance" | "settings";
+type Screen = "activation" | "dashboard" | "settings";
 
-const NAV: { id: Exclude<Screen, "activation">; label: string; disabled?: boolean }[] = [
-  { id: "dashboard", label: "Dashboard" },
-  { id: "trades",    label: "Trades"    },
-  { id: "settings",  label: "Settings"  },
-];
+const ACTIVATION_ENABLED = true;
 
 export default function App() {
-  const [screen,    setScreen]    = useState<Screen>("dashboard");
-  const [running,   setRunning]   = useState(false);
-  const [stats,     setStats]     = useState<Stats | null>(null);
-  const [log,       setLog]       = useState<LogEntry[]>([]);
-  const [trades,    setTrades]    = useState<Trade[]>([]);
-  const [toast,     setToast]     = useState<string | null>(null);
+  const [screen, setScreen] = useState<Screen>(ACTIVATION_ENABLED ? "activation" : "dashboard");
+  const [running, setRunning] = useState(false);
   const [connected, setConnected] = useState(false);
-  const [server,    setServer]    = useState("");
-  const [pingMs,    setPingMs]    = useState<number | null>(null);
-  const [tFilter,   setTFilter]   = useState<"all" | "win" | "loss">("all");
-  const [range,     setRange]     = useState<"7D" | "30D" | "All">("30D");
-  const [menuOpen,  setMenuOpen]  = useState(false);
+  const [server, setServer] = useState("");
+  const [pingMs, setPingMs] = useState<number | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [log, setLog] = useState<LogEntry[]>([]);
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]);
+  const [marketReadings, setMarketReadings] = useState<MarketReading[]>([]);
 
-  const showToast = useCallback((msg: string) => {
-    setToast(null);
-    setTimeout(() => setToast(msg), 10);
-  }, []);
-
-  useEffect(() => {
-    // Auto-activate a personal-use license so the app is usable immediately.
-    // Replace this with a real license check when selling the bot.
-    mockApi.checkLicense().then(r => {
-      if (!r.ok) mockApi.validateLicense("ARB-PERSONAL-USE-KEY").catch(() => {});
-    }).catch(() => {});
-
+  const tryConnectMt5 = useCallback(async () => {
     const start = performance.now();
-    mockApi.connectMt5().then(r => {
+    try {
+      const r = await apiClient.connectMt5();
       if (r.ok) {
         setConnected(true);
         setServer(r.server ?? "");
         setPingMs(Math.round(performance.now() - start));
       }
-    }).catch(() => {});
+    } catch {}
   }, []);
 
-  // Lock body scroll when mobile drawer is open (also blocks iOS momentum scroll)
   useEffect(() => {
-    if (!menuOpen) {
-      document.body.style.overflow = "";
-      document.body.style.touchAction = "";
-      document.body.style.position = "";
-      document.body.style.width = "";
-      return;
-    }
-    const scrollY = window.scrollY;
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.left = "0";
-    document.body.style.right = "0";
-    document.body.style.width = "100%";
-    document.body.style.overflow = "hidden";
-    document.body.style.touchAction = "none";
-
-    const preventTouch = (e: TouchEvent) => e.preventDefault();
-    document.addEventListener("touchmove", preventTouch, { passive: false });
-
-    return () => {
-      document.removeEventListener("touchmove", preventTouch);
-      document.body.style.position = "";
-      document.body.style.top = "";
-      document.body.style.left = "";
-      document.body.style.right = "";
-      document.body.style.width = "";
-      document.body.style.overflow = "";
-      document.body.style.touchAction = "";
-      window.scrollTo(0, scrollY);
-    };
-  }, [menuOpen]);
-
-  useEffect(() => {
+    if (screen === "activation") return;
     const pollStats = async () => {
       try {
-        const s = await mockApi.getStats();
+        const s = await apiClient.getStats();
         setStats(s);
         setRunning(s.running);
-        setConnected(s.connected);
       } catch {}
     };
-
     const pollLog = async () => {
-      try {
-        const entries = await mockApi.getLog();
-        setLog(entries);
-      } catch {}
+      try { setLog(await apiClient.getLog()); } catch {}
+    };
+    const pollTrades = async () => {
+      try { setTrades(await apiClient.getTrades()); } catch {}
+    };
+    const pollMarket = async () => {
+      try { setMarketReadings(await apiClient.getMarket()); } catch {}
     };
 
     pollStats();
     pollLog();
+    pollTrades();
+    pollMarket();
+    apiClient.getCalendar().then(setCalendarEvents).catch(() => {});
 
     const statsTimer = setInterval(pollStats, 5000);
-    const logTimer   = setInterval(pollLog,   3000);
-    return () => { clearInterval(statsTimer); clearInterval(logTimer); };
-  }, []);
+    const logTimer = setInterval(pollLog, 5000);
+    const tradesTimer = setInterval(pollTrades, 15000);
+    const marketTimer = setInterval(pollMarket, 5000);
+    return () => {
+      clearInterval(statsTimer);
+      clearInterval(logTimer);
+      clearInterval(tradesTimer);
+      clearInterval(marketTimer);
+    };
+  }, [screen]);
 
-  const handleActivated = useCallback(async () => {
+  const handleStartBot = useCallback(async () => {
     try {
-      const start = performance.now();
-      const r = await mockApi.connectMt5();
-      if (r.ok) {
-        setConnected(true);
-        setServer(r.server ?? "");
-        setPingMs(Math.round(performance.now() - start));
-      } else {
-        showToast(r.error ?? "MT5 connection failed — check MetaTrader is open");
-      }
-    } catch {
-      showToast("Backend not reachable — run: python server.py");
-    }
-    setScreen("dashboard");
-  }, [showToast]);
-
-  const handleToggleBot = useCallback(async () => {
-    if (!running && !connected) {
-      showToast("Connect MT5 first");
-      return;
-    }
-    try {
-      const r = running ? await mockApi.stopBot() : await mockApi.startBot();
+      const r = await apiClient.startBot();
       setRunning(r.running);
-      showToast(r.running ? "Bot started" : "Bot stopped");
-    } catch {
-      showToast("Failed — is python server.py running?");
-    }
-  }, [running, connected, showToast]);
-
-  const handleLoadSettings = useCallback(() => mockApi.getSettings(), []);
-
-  const handleSaveSettings = useCallback(async (data: Settings) => {
-    try {
-      const r = await mockApi.saveSettings(data);
-      showToast(r.ok ? "Settings saved" : "Save failed");
-    } catch { showToast("Save failed"); }
-  }, [showToast]);
-
-  const goTo = useCallback((s: Screen) => {
-    setScreen(s);
-    setMenuOpen(false);
-    if (s === "trades") mockApi.getTrades().then(setTrades).catch(() => {});
+    } catch {}
   }, []);
 
-  const inApp = screen !== "activation";
+  const handleStopBot = useCallback(async () => {
+    try {
+      const r = await apiClient.stopBot();
+      setRunning(r.running);
+    } catch {}
+  }, []);
 
-  return (
-    <>
-    <div className="app-root" style={{ background: "#F9FAFB" }}>
+  const handleDisconnect = useCallback(() => {
+    clearConnection();
+    setConnected(false);
+    setServer("");
+    setPingMs(null);
+    setScreen("activation");
+  }, []);
 
-      {/* ── Title bar ───────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0 flex items-center justify-between px-5 select-none"
-           style={{ height: 40, background: "var(--nav-bg)", transition: "background 0.2s ease" }}>
-
-        {/* Desktop: icon + brand on the left (hidden on activation screen) */}
-        <div className="mob-hide-inline flex items-center gap-2.5 text-[13px] font-semibold" style={{ color: "var(--nav-text)", marginLeft: 4 }}>
-          {inApp && (
-            <>
-              <PulseIcon />
-              AR-InvestTech
-              <span className="flex items-center gap-1.5 ml-0.5">
-                <span className="rounded-full" style={{
-                  width: 8, height: 8,
-                  ...(running
-                    ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" }
-                    : { background: "#9CA3AF" }),
-                }} />
-                <span className="text-[11px] font-normal" style={{ color: "var(--nav-text-dim)" }}>
-                  {running ? "Running" : "Stopped"}
-                </span>
-              </span>
-            </>
-          )}
-        </div>
-
-        {/* Mobile: burger on the left */}
-        {inApp && (
-          <button className="burger-btn" onClick={() => setMenuOpen(o => !o)} aria-label="Menu">
-            <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-              <line x1="3" y1="6"  x2="21" y2="6"  />
-              <line x1="3" y1="12" x2="21" y2="12" />
-              <line x1="3" y1="18" x2="21" y2="18" />
-            </svg>
-          </button>
-        )}
-
-        {/* Mobile: brand on the right (hidden on activation screen) */}
-        {inApp && (
-          <div className="desk-hide items-center gap-2 text-[13px] font-semibold" style={{ marginRight: 16, color: "var(--nav-text)" }}>
-            <span className="flex items-center gap-1.5 mr-1">
-              <span className="rounded-full" style={{
-                width: 8, height: 8,
-                ...(running
-                  ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" }
-                  : { background: "#9CA3AF" }),
-              }} />
-              <span className="text-[11px] font-normal" style={{ color: "var(--nav-text-dim)" }}>
-                {running ? "Running" : "Stopped"}
-              </span>
-            </span>
-            AR-InvestTech
-          </div>
-        )}
-      </div>
-
-      {/* ── Activation ──────────────────────────────────────────────────────── */}
-      {screen === "activation" && (
+  if (screen === "activation") {
+    return (
+      <div className="full-viewport">
         <Activation
-          onActivated={handleActivated}
-          doValidate={k => mockApi.validateLicense(k)}
+          onActivated={() => { setScreen("dashboard"); tryConnectMt5(); }}
+          doValidate={(key) => apiClient.validateLicense(key)}
         />
-      )}
+      </div>
+    );
+  }
 
-      {/* ── App shell ───────────────────────────────────────────────────────── */}
-      {inApp && (
-        <div className="app-shell">
-
-          {/* Sidebar */}
-          <aside className="sidebar-nav flex flex-col flex-shrink-0" style={{ width: 180, background: "var(--nav-bg)", color: "var(--nav-text)", padding: "16px 0", transition: "background 0.2s ease, color 0.2s ease" }}>
-
-            {/* Brand */}
-            <div className="flex items-center gap-2 px-4"
-                 style={{ paddingBottom: 18, borderBottom: "1px solid var(--nav-border)", marginBottom: 10 }}>
-              <PulseIcon size={20} />
-              <div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nav-text)", textTransform: "uppercase", letterSpacing: ".04em" }}>
-                  AR-InvestTech
-                </div>
-                <div style={{ fontSize: 9, color: "var(--nav-text-dim)", textTransform: "uppercase", letterSpacing: ".05em" }}>
-                  v1.0.0
-                </div>
-              </div>
-            </div>
-
-            {/* Nav */}
-            {NAV.map(n => {
-              const active = screen === n.id;
-              return (
-                <button key={n.id}
-                  onClick={() => !n.disabled && goTo(n.id)}
-                  title={n.disabled ? "Coming soon — being redesigned" : undefined}
-                  className="flex items-center gap-2.5 text-[13px] font-semibold text-left w-full"
-                  style={{
-                    padding: active ? "10px 16px 10px 13px" : "10px 16px",
-                    borderLeft: `3px solid ${active ? "var(--nav-active-border)" : "transparent"}`,
-                    background: active ? "var(--nav-active-bg)" : "transparent",
-                    color: n.disabled ? "var(--nav-disabled)" : active ? "var(--nav-text)" : "var(--nav-item-text)",
-                    transition: "background .12s",
-                    cursor: n.disabled ? "not-allowed" : "pointer",
-                    opacity: n.disabled ? 0.5 : 1,
-                  }}>
-                  <NavIcon id={n.id} />
-                  {n.label}
-                </button>
-              );
-            })}
-
-            <div className="flex-1" />
-
-            {/* Bot status */}
-            <div style={{ padding: "12px 16px", borderTop: "1px solid var(--nav-border)" }}>
-              <div style={{ fontSize: 10, color: "var(--nav-text-dim)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>
-                Bot Status
-              </div>
-              <div className="flex items-center gap-1.5 font-semibold"
-                   style={{ fontSize: 12, color: running ? "#22C55E" : "var(--nav-item-text)", marginBottom: 8 }}>
-                <span className="rounded-full" style={{
-                  width: 7, height: 7,
-                  ...(running
-                    ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" }
-                    : { background: "var(--nav-text-dim)" }),
-                }} />
-                {running ? "Running" : "Stopped"}
-              </div>
-              {running ? (
-                <button onClick={handleToggleBot}
-                  className="w-full flex items-center justify-center gap-1.5 rounded-md font-semibold"
-                  style={{ background: "var(--nav-stop-bg)", border: "1px solid var(--nav-stop-border)", color: "var(--nav-stop-text)", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
-                  <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <rect x="6" y="6" width="12" height="12" />
-                  </svg>
-                  Stop Bot
-                </button>
-              ) : (
-                <button onClick={handleToggleBot}
-                  disabled={!connected}
-                  className="w-full flex items-center justify-center gap-1.5 rounded-md font-bold"
-                  style={{ background: "var(--nav-start-bg)", color: "var(--nav-start-text)", fontSize: 12, padding: "8px 0", cursor: connected ? "pointer" : "not-allowed", opacity: connected ? 1 : 0.5 }}>
-                  <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                    <polygon points="5 3 19 12 5 21 5 3" />
-                  </svg>
-                  Start Bot
-                </button>
-              )}
-            </div>
-
-            <div style={{ padding: "10px 16px 0", fontSize: 9, color: "var(--nav-text-dim)", letterSpacing: ".04em" }}>
-              Developed by DippsDev
-            </div>
-          </aside>
-
-          {/* Main */}
-          <main className="app-main">
-            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              {screen === "dashboard"   && <Dashboard running={running} log={log} stats={stats} />}
-              {screen === "trades"      && <Trades trades={trades} filter={tFilter} onFilter={setTFilter} />}
-              {screen === "performance" && <Performance range={range} onRange={setRange} />}
-              {screen === "settings"    && (
-                <SettingsPage
-                  onSave={handleSaveSettings}
-                  doLoad={handleLoadSettings}
-                  connected={connected}
-                  server={server}
-                  pingMs={pingMs}
-                />
-              )}
-            </div>
-          </main>
+  if (screen === "settings") {
+    return (
+      <div className="full-viewport dark-scroll" style={{ overflowY: "auto", background: "var(--dash-bg)", color: "var(--dash-text)" }}>
+        <div style={{ maxWidth: 760, margin: "0 auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
+          <button
+            onClick={() => setScreen("dashboard")}
+            style={{
+              alignSelf: "flex-start",
+              background: "transparent",
+              border: "none",
+              color: "var(--dash-text-muted)",
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              fontFamily: "inherit",
+              padding: 0,
+            }}
+          >
+            ← Back to Dashboard
+          </button>
+          <SettingsScreen
+            onSave={async (data) => { await apiClient.saveSettings(data); }}
+            doLoad={() => apiClient.getSettings()}
+            connected={connected}
+            server={server}
+            pingMs={pingMs}
+          />
         </div>
-      )}
+      </div>
+    );
+  }
 
-      <Toast message={toast} onDone={() => setToast(null)} />
-    </div>
-
-    {/* ── Drawer + overlay — rendered OUTSIDE app-root so overflow-x:hidden cannot clip them ── */}
-    {inApp && (
-      <>
-        {menuOpen && <div className="drawer-overlay" onClick={() => setMenuOpen(false)} />}
-
-        <div className="mobile-drawer" style={{ transform: menuOpen ? "translateX(0)" : "translateX(-100%)", color: "var(--nav-text)" }}>
-
-          {/* Brand */}
-          <div className="flex items-center justify-center px-6"
-               style={{ paddingBottom: 18, borderBottom: "1px solid var(--nav-border)", marginBottom: 10 }}>
-            <div style={{ textAlign: "center" }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: "var(--nav-text)", textTransform: "uppercase", letterSpacing: ".04em" }}>
-                AR-InvestTech
-              </div>
-              <div style={{ fontSize: 9, color: "var(--nav-text-dim)", textTransform: "uppercase", letterSpacing: ".05em" }}>v1.0.0</div>
-            </div>
-          </div>
-
-          {/* Nav items */}
-          {NAV.map(n => {
-            const active = screen === n.id;
-            return (
-              <button key={n.id}
-                onClick={() => !n.disabled && goTo(n.id)}
-                title={n.disabled ? "Coming soon — being redesigned" : undefined}
-                className="flex items-center gap-2.5 text-[13px] font-semibold text-left w-full"
-                style={{
-                  padding: active ? "10px 16px 10px 13px" : "10px 16px",
-                  borderLeft: `3px solid ${active ? "var(--nav-active-border)" : "transparent"}`,
-                  background: active ? "var(--nav-active-bg)" : "transparent",
-                  color: n.disabled ? "var(--nav-disabled)" : active ? "var(--nav-text)" : "var(--nav-item-text)",
-                  cursor: n.disabled ? "not-allowed" : "pointer",
-                  opacity: n.disabled ? 0.5 : 1,
-                }}>
-                <NavIcon id={n.id} />
-                {n.label}
-              </button>
-            );
-          })}
-
-          <div style={{ flex: 1 }} />
-
-          {/* Bot status */}
-          <div style={{ padding: "12px 16px", borderTop: "1px solid var(--nav-border)" }}>
-            <div style={{ fontSize: 10, color: "var(--nav-text-dim)", textTransform: "uppercase", letterSpacing: ".05em", marginBottom: 6 }}>Bot Status</div>
-            <div className="flex items-center gap-1.5 font-semibold"
-                 style={{ fontSize: 12, color: running ? "#22C55E" : "var(--nav-item-text)", marginBottom: 8 }}>
-              <span className="rounded-full" style={{
-                width: 7, height: 7,
-                ...(running ? { background: "#22C55E", boxShadow: "0 0 0 3px #22C55E33" } : { background: "var(--nav-text-dim)" }),
-              }} />
-              {running ? "Running" : "Stopped"}
-            </div>
-            {running ? (
-              <button onClick={handleToggleBot}
-                className="w-full flex items-center justify-center gap-1.5 rounded-md font-semibold"
-                style={{ background: "var(--nav-stop-bg)", border: "1px solid var(--nav-stop-border)", color: "var(--nav-stop-text)", fontSize: 12, padding: "8px 0", cursor: "pointer" }}>
-                <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <rect x="6" y="6" width="12" height="12" />
-                </svg>
-                Stop Bot
-              </button>
-            ) : (
-              <button onClick={handleToggleBot}
-                disabled={!connected}
-                className="w-full flex items-center justify-center gap-1.5 rounded-md font-bold"
-                style={{ background: "var(--nav-start-bg)", color: "var(--nav-start-text)", fontSize: 12, padding: "8px 0", cursor: connected ? "pointer" : "not-allowed", opacity: connected ? 1 : 0.5 }}>
-                <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-                  <polygon points="5 3 19 12 5 21 5 3" />
-                </svg>
-                Start Bot
-              </button>
-            )}
-          </div>
-        </div>
-      </>
-    )}
-    </>
-  );
-}
-
-function PulseIcon({ size = 16 }: { size?: number }) {
   return (
-    <svg width={size} height={size} fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
-      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-    </svg>
+    <div className="full-viewport">
+      <Dashboard
+        running={running}
+        log={log}
+        stats={stats}
+        trades={trades}
+        calendarEvents={calendarEvents}
+        marketReadings={marketReadings}
+        onOpenSettings={() => setScreen("settings")}
+        onDisconnect={handleDisconnect}
+        onStartBot={handleStartBot}
+        onStopBot={handleStopBot}
+      />
+    </div>
   );
-}
-
-function NavIcon({ id }: { id: string }) {
-  if (id === "dashboard")
-    return <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>;
-  if (id === "trades")
-    return <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
-  if (id === "performance")
-    return <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>;
-  return <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M2 12h3m14 0h3M12 2v3m0 14v3"/></svg>;
 }

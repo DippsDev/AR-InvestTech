@@ -6,19 +6,24 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 
+# PyInstaller / installer build output
+backend/build/
+backend/dist/
+backend/packaging/Output/
+
 # Environment & secrets
-.env
-.env.*
-.license
+backend/.env
+backend/.env.*
+backend/.license
 
 # Logs & data outputs
-logs/*.log
-silver_bullet/logs/*.log
-trades.csv
-backtests/*.json
-backtests/*.csv
-backtests/*.png
-backtests/*.log
+backend/logs/*.log
+backend/silver_bullet/logs/*.log
+backend/data/trades.csv
+backend/backtests/*.json
+backend/backtests/*.csv
+backend/backtests/*.png
+backend/backtests/*.log
 
 # Next.js
 frontend/.next/
