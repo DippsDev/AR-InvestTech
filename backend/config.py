@@ -8,7 +8,12 @@ from src import paths
 # repo root when running from source — see src/paths.py. Seeded from
 # .env.example on first run so a fresh install never crashes on a missing file.
 ENV_PATH = paths.ensure_env_file()
-load_dotenv(ENV_PATH)
+# override=True: without it, dotenv refuses to overwrite an already-set
+# os.environ value, so importlib.reload(config) after a Settings save (see
+# bridge.py save_settings) would silently keep serving the first-ever-loaded
+# values for the rest of the process's life — the .env file on disk would be
+# correct but every save after the first would have no real effect.
+load_dotenv(ENV_PATH, override=True)
 
 # MT5 Connection
 try:
