@@ -228,12 +228,27 @@ def connect_mt5(
                 ok = mt5.initialize(path=path)
                 if ok:
                     info = mt5.account_info()
-                    if info:
+                    # A terminal that's already open can be logged into a
+                    # stale/different account (e.g. switching accounts on a
+                    # machine that still has an old session cached) — reusing
+                    # that connection as-is would silently trade the wrong
+                    # account. If the caller asked for a specific login and
+                    # what's attached doesn't match, force a real re-auth
+                    # instead of trusting the existing session.
+                    if info and has_creds and info.login != login:
+                        logger.info(
+                            f"Terminal logged into {info.login}, switching to {login}..."
+                        )
+                        ok = mt5.login(login, password=password, server=server)
+                        info = mt5.account_info() if ok else None
+                    if ok and info:
                         logger.info(
                             f"Connected | Account: {info.login} | "
                             f"Balance: ${info.balance:.2f} | Server: {info.server}"
                         )
-                    return True
+                        return True
+                    if ok and not has_creds:
+                        return True
             except Exception as exc:
                 logger.warning(f"MT5 path-only initialize raised exception: {exc}")
 
