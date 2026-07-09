@@ -82,9 +82,20 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs }: 
     setSaveOk(false);
     try {
       await onSave(form);
-      // Password is write-only — never keep it sitting in memory/DOM
-      // longer than the single save that used it.
-      setForm(f => ({ ...f, password: "" }));
+      // Re-fetch from the server instead of trusting local state as "saved" —
+      // this is the only way to confirm the save actually took effect
+      // server-side rather than just looking like it did in the form.
+      try {
+        const fresh = await doLoad();
+        // Password is write-only — never keep it sitting in memory/DOM
+        // longer than the single save that used it, and the server never
+        // returns it anyway.
+        setForm({ ...fresh, password: "" });
+      } catch {
+        // The save itself already succeeded (onSave didn't throw); a failed
+        // confirmation re-fetch shouldn't be reported as a save failure.
+        setForm(f => ({ ...f, password: "" }));
+      }
       setSaveOk(true);
       setTimeout(() => setSaveOk(false), 2000);
     } catch (err) {
