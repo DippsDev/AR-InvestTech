@@ -126,7 +126,7 @@ export default function App() {
             ← Back to Dashboard
           </button>
           <SettingsScreen
-            onSave={async (data) => { await apiClient.saveSettings(data); }}
+            onSave={async (data) => { await apiClient.saveSettings(data); await tryConnectMt5(); }}
             doLoad={() => apiClient.getSettings()}
             connected={connected}
             server={server}
