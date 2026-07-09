@@ -2,7 +2,8 @@ import { getConnection } from "./connection";
 import type { CalendarEvent } from "./dashboardData";
 
 // Every call reads the connection fresh (never cached at module scope) and
-// attaches the shared-secret token the backend now requires on every route.
+// attaches the API token header if one is set (the backend doesn't currently
+// enforce it, but sending it is harmless and future-proofs against it doing so).
 async function req(path: string, init?: RequestInit): Promise<Response> {
   const { baseUrl, token } = getConnection();
   const headers: Record<string, string> = {
@@ -10,7 +11,18 @@ async function req(path: string, init?: RequestInit): Promise<Response> {
   };
   if (token) headers["X-API-Token"] = token;
   if (init?.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-  return fetch(`${baseUrl}${path}`, { ...init, headers });
+  let r: Response;
+  try {
+    r = await fetch(`${baseUrl}${path}`, { ...init, headers });
+  } catch {
+    // fetch only throws on a network-level failure (DNS, dead tunnel,
+    // CORS block) — surface that distinctly from an HTTP error response.
+    throw new Error(`Backend not reachable at ${baseUrl || "(no URL set)"} — check the Backend URL in Settings.`);
+  }
+  if (!r.ok) {
+    throw new Error(`Backend returned ${r.status} for ${path}.`);
+  }
+  return r;
 }
 
 export interface Stats {
@@ -106,11 +118,9 @@ export const apiClient = {
         method: "POST",
         body: JSON.stringify({ key }),
       });
-      if (r.status === 401) return { ok: false, error: "Backend rejected the API token." };
-      if (!r.ok) return { ok: false, error: "Backend rejected the request." };
       return r.json();
-    } catch {
-      return { ok: false, error: "Backend not reachable. Check the backend URL in Settings." };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "Backend not reachable. Check the backend URL in Settings." };
     }
   },
   async validateActivation(key: string) {
@@ -122,10 +132,9 @@ export const apiClient = {
   async connectMt5(): Promise<{ ok: boolean; server?: string; login?: string; balance?: string; error?: string }> {
     try {
       const r = await req("/mt5/connect", { method: "POST" });
-      if (r.status === 401) return { ok: false, error: "Backend rejected the API token." };
       return r.json();
-    } catch {
-      return { ok: false, error: "Backend not reachable. Check the backend URL in Settings." };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "Backend not reachable. Check the backend URL in Settings." };
     }
   },
 

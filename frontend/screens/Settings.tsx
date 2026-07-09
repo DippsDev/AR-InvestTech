@@ -47,6 +47,8 @@ function SectionHeader({ label, color }: { label: string; color: string }) {
 export default function Settings({ onSave, doLoad, connected, server, pingMs }: Props) {
   const [form,   setForm]   = useState<S>(DEFAULTS);
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [saveOk,    setSaveOk]    = useState(false);
 
   const [backendUrl, setBackendUrl]   = useState(() => getConnection().baseUrl);
   const [apiToken,   setApiToken]     = useState(() => getConnection().token);
@@ -76,11 +78,19 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs }: 
 
   const save = async () => {
     setSaving(true);
+    setSaveError("");
+    setSaveOk(false);
     try {
       await onSave(form);
       // Password is write-only — never keep it sitting in memory/DOM
       // longer than the single save that used it.
       setForm(f => ({ ...f, password: "" }));
+      setSaveOk(true);
+      setTimeout(() => setSaveOk(false), 2000);
+    } catch (err) {
+      setSaveError(
+        err instanceof Error ? err.message : "Save failed — check the Backend URL in Connection below."
+      );
     } finally { setSaving(false); }
   };
 
@@ -129,14 +139,18 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs }: 
           <div style={{ fontSize: 18, fontWeight: 700, color: "var(--dash-text)" }}>Settings</div>
           <div style={{ fontSize: 12, color: "var(--dash-text-muted)", marginTop: 2 }}>Connection &amp; risk parameters</div>
         </div>
-        <button onClick={save} disabled={saving} style={{
-          background: "#22C55E", color: "#0B0E11", border: "none",
-          borderRadius: 6, padding: "9px 18px", fontSize: 12, fontWeight: 700,
-          cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit",
-          opacity: saving ? 0.6 : 1,
-        }}>
-          {saving ? "Saving…" : "Save Changes"}
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {saveOk && <span style={{ fontSize: 12, color: "#22C55E" }}>Saved</span>}
+          {saveError && <span style={{ fontSize: 12, color: "#F87171", maxWidth: 260 }}>{saveError}</span>}
+          <button onClick={save} disabled={saving} style={{
+            background: "#22C55E", color: "#0B0E11", border: "none",
+            borderRadius: 6, padding: "9px 18px", fontSize: 12, fontWeight: 700,
+            cursor: saving ? "not-allowed" : "pointer", fontFamily: "inherit",
+            opacity: saving ? 0.6 : 1,
+          }}>
+            {saving ? "Saving…" : "Save Changes"}
+          </button>
+        </div>
       </div>
 
       {/* Backend Connection */}
