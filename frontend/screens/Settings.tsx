@@ -65,7 +65,12 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs }: 
     setTimeout(() => setConnSaved(false), 2000);
   };
 
-  useEffect(() => { doLoad().then(setForm).catch(() => {}); }, [doLoad]);
+  // Load once on mount only — `doLoad` is a fresh closure on every parent
+  // render (page.tsx re-renders every 5s from stats/log polling even while
+  // this screen is open), so depending on it here would silently overwrite
+  // in-progress edits with stale server values as the user types.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { doLoad().then(setForm).catch(() => {}); }, []);
 
   const set = (k: keyof S, v: string | boolean) => setForm(f => ({ ...f, [k]: v }));
 
