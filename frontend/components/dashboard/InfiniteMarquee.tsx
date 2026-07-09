@@ -45,7 +45,7 @@ export default function InfiniteMarquee({ items, speed = 40, gap = 24, className
   const full = [...track, ...track];
 
   return (
-    <div ref={outerRef} className={className} style={{ overflow: "hidden", ...style }}>
+    <div ref={outerRef} className={className} style={{ overflow: "hidden", minWidth: 0, ...style }}>
       {/* Invisible, unrepeated copy used only to measure one set's natural width. */}
       <div
         ref={sampleRef}

@@ -162,6 +162,24 @@ export default function TickerBar({ running, stats, onOpenSettings, onDisconnect
         borderBottom: "1px solid var(--dash-border)",
         fontSize: 12,
         whiteSpace: "nowrap",
+        // This bar is a flex item in Dashboard's column flex container.
+        // Flex items default to min-width:auto, which refuses to shrink
+        // below their content's intrinsic width — align-items:stretch alone
+        // doesn't override that, so the marquee's long unwrapped ticker text
+        // was forcing this whole bar (and the page) wider than the viewport.
+        minWidth: 0,
+        // An explicit percentage width is a much harder constraint than
+        // relying on flex-grow math alone — it resolves against the parent
+        // regardless of how the marquee child's content-based sizing behaves,
+        // where min-width:0 + flex:1 alone was still intermittently losing
+        // to it in WebKit.
+        width: "100%",
+        // Hard backstop: the scrolling marquee child measures its own width
+        // via ResizeObserver and can transiently compute a too-wide value
+        // (observably flaky in WebKit) before settling — clip at this box's
+        // own boundary so that race can never expand the page itself.
+        overflow: "hidden",
+        maxWidth: "100%",
       }}
     >
       {/* Static left labels — solid background so scrolling data passes behind */}

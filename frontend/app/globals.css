@@ -316,6 +316,13 @@ html, body {
   html, body {
     overflow-y: auto !important;
     overflow-x: hidden !important;
+    /* overflow-x:hidden alone is advisory for touch panning on iOS Safari —
+       it still lets a user's swipe rubber-band past the boundary and reveal
+       whatever's clipped underneath (a wide-but-clipped marquee track, etc.),
+       even though the same content never causes a visible issue in any other
+       engine. This tells Safari to refuse that horizontal overscroll/bounce
+       at the document edge outright instead of trusting the clip alone. */
+    overscroll-behavior-x: none;
   }
   .full-viewport {
     height: auto !important;
@@ -324,6 +331,7 @@ html, body {
     overflow-y: auto;
     overflow-x: hidden;
     max-width: 100vw;
+    overscroll-behavior-x: none;
   }
   /* Belt-and-suspenders on top of the overflow-x:hidden chain below: an
      explicit hard cap so no amount of flex/grid stretch math can ever
