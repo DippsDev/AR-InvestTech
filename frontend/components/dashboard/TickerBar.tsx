@@ -174,14 +174,14 @@ export default function TickerBar({ running, stats, onOpenSettings, onDisconnect
         // where min-width:0 + flex:1 alone was still intermittently losing
         // to it in WebKit.
         width: "100%",
-        // Hard backstop: the scrolling marquee child measures its own width
-        // via ResizeObserver and can transiently compute a too-wide value
-        // (observably flaky in WebKit) before settling — clip at this box's
-        // own boundary so that race can never expand the page itself.
-        // Horizontal only — the menu dropdown below MenuButton renders
-        // outside this box's height and must not be clipped vertically.
-        overflowX: "hidden",
-        maxWidth: "100%",
+        // No overflow clip on this element itself: per the CSS overflow
+        // interop rule, setting overflow-x to anything but visible forces
+        // the UA to compute overflow-y as auto too (it can't be "visible on
+        // one axis, clipped on the other" on the same box) — and this box
+        // also contains the MenuButton dropdown, which must render below
+        // the bar's own height uncropped. The horizontal backstop for the
+        // marquee's transient over-measurement lives on the marquee's own
+        // wrapper below instead, where clipping vertically doesn't matter.
       }}
     >
       {/* Static left labels — solid background so scrolling data passes behind */}
@@ -207,9 +207,15 @@ export default function TickerBar({ running, stats, onOpenSettings, onDisconnect
         <TradeToggle running={running} onStartBot={onStartBot} onStopBot={onStopBot} />
       </div>
 
-      {/* Scrolling ticker track in the remaining width */}
+      {/* Scrolling ticker track in the remaining width. maxWidth is a hard
+          backstop: the marquee measures its own width via ResizeObserver and
+          can transiently compute a too-wide value (observably flaky in
+          WebKit) before settling — clip at this element's own boundary
+          (InfiniteMarquee already sets overflow:hidden on its root) so that
+          race can never expand the page. Scoped to just the marquee, not the
+          whole bar, so it can't clip the MenuButton dropdown next to it. */}
       <InfiniteMarquee
-        style={{ flex: 1 }}
+        style={{ flex: 1, minWidth: 0, maxWidth: "100%" }}
         speed={45}
         gap={24}
         items={facts.map((f, i) => (
