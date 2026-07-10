@@ -178,7 +178,9 @@ export default function TickerBar({ running, stats, onOpenSettings, onDisconnect
         // via ResizeObserver and can transiently compute a too-wide value
         // (observably flaky in WebKit) before settling — clip at this box's
         // own boundary so that race can never expand the page itself.
-        overflow: "hidden",
+        // Horizontal only — the menu dropdown below MenuButton renders
+        // outside this box's height and must not be clipped vertically.
+        overflowX: "hidden",
         maxWidth: "100%",
       }}
     >
