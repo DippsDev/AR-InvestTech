@@ -383,11 +383,18 @@ html, body {
   .dash-card {
     min-width: 0;
   }
+  /* height must be a definite length here, not auto+max-height: BotLog's
+     root has height:100%, and a percentage height only resolves against an
+     ancestor with a definite (used) height — max-height alone never makes
+     an auto-height box definite for that purpose. With height:auto, BotLog
+     (and its own internal flex:1 scroll region) fell back to sizing itself
+     to its full, unbounded content instead of 100% of this box, so this
+     box's own overflow:auto scrolled through the *entire* log — the fixed
+     420px "window" was scrolling right past its own visible boundary. */
   .dash-chat-col {
     width: 100% !important;
     flex-shrink: 1 !important;
-    height: auto !important;
-    max-height: 420px;
+    height: 420px !important;
     padding: 0 14px 14px !important;
   }
 }
@@ -399,7 +406,7 @@ html, body {
   }
   .dash-chat-col {
     padding: 0 10px 10px !important;
-    max-height: 380px;
+    height: 380px !important;
   }
 }
 
