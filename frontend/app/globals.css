@@ -76,6 +76,12 @@ body {
 ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 .dark-scroll::-webkit-scrollbar-thumb { background: #374151; }
+/* Without this, scrolling one of these nested regions (e.g. the Bot
+   Activity log) past its own end chains into the outer page scroll — on
+   iOS Safari in particular this rubber-bands the whole page past its real
+   content, which looks like blank space appearing below a box that has
+   nothing left below it. Contain the scroll to the region it belongs to. */
+.dark-scroll { overscroll-behavior: contain; }
 
 .act-input::placeholder { color: var(--dash-text-dim); opacity: 1; }
 
@@ -374,6 +380,18 @@ html, body {
   .dash-scroll-area {
     overflow-x: hidden !important;
     overflow-y: visible !important;
+    /* overflow-x:hidden paired with overflow-y:visible on the same box is
+       not representable — per spec the UA silently promotes the 'visible'
+       axis to 'auto' when the other axis isn't 'visible', so this element
+       computes to overflow-y:auto regardless of the rule above. That makes
+       it a real (if always-empty, since it never has its own overflow here)
+       scroll container. It also carries .dark-scroll's
+       overscroll-behavior:contain, which stops a touch-scroll gesture from
+       chaining up to <html> — the ancestor that actually has the page's
+       overflow — once this element's own (zero) scroll range is exhausted.
+       Net effect: touch scrolling anywhere over this box does nothing.
+       Force scroll-chaining back on so the gesture passes straight through. */
+    overscroll-behavior-y: auto !important;
   }
   .dash-scroll-area > div {
     min-width: 0;
@@ -383,18 +401,16 @@ html, body {
   .dash-card {
     min-width: 0;
   }
-  /* height must be a definite length here, not auto+max-height: BotLog's
-     root has height:100%, and a percentage height only resolves against an
-     ancestor with a definite (used) height — max-height alone never makes
-     an auto-height box definite for that purpose. With height:auto, BotLog
-     (and its own internal flex:1 scroll region) fell back to sizing itself
-     to its full, unbounded content instead of 100% of this box, so this
-     box's own overflow:auto scrolled through the *entire* log — the fixed
-     420px "window" was scrolling right past its own visible boundary. */
+  /* max-height (not height) so the panel shrinks to fit a short log instead
+     of always reserving the full 420px — this only works because BotLog is
+     wired up with flex:1/minHeight:0 rather than height:100%; a percentage
+     height doesn't resolve against an auto-height ancestor no matter what
+     max-height says, but the flex algorithm handles a max-height-clamped
+     flex container correctly regardless. */
   .dash-chat-col {
     width: 100% !important;
     flex-shrink: 1 !important;
-    height: 420px !important;
+    max-height: 420px !important;
     padding: 0 14px 14px !important;
   }
 }
@@ -406,7 +422,7 @@ html, body {
   }
   .dash-chat-col {
     padding: 0 10px 10px !important;
-    height: 380px !important;
+    max-height: 380px !important;
   }
 }
 

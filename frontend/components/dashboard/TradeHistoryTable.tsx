@@ -19,7 +19,7 @@ export default function TradeHistoryTable({ trades }: Props) {
         display: "flex",
         flexDirection: "column",
         gap: 10,
-        height: "100%",
+        flex: 1,
         minHeight: 0,
       }}
     >

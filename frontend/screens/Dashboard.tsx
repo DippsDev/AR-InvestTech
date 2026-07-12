@@ -193,8 +193,15 @@ export default function Dashboard(props: Props) {
               </div>
             </div>
 
-            {/* Trade history */}
-            <div style={{ flex: 1, minHeight: 320 }}>
+            {/* Trade history. display:flex here (not just on the card inside)
+                so the card can fill this wrapper via flex:1 instead of
+                height:100% — on mobile .dash-scroll-area's ancestors switch
+                to auto/visible so page scroll is unbroken (see dash-body
+                comment below), which leaves height:100% with no definite
+                reference to resolve against and the card collapses to its
+                content, stranding blank space up to this wrapper's
+                minHeight. flex:1/minHeight:0 sidesteps that entirely. */}
+            <div style={{ flex: 1, minHeight: 320, display: "flex", flexDirection: "column" }}>
               <TradeHistoryTable trades={props.trades} />
             </div>
           </div>
@@ -203,14 +210,23 @@ export default function Dashboard(props: Props) {
           <EventCalendar events={props.calendarEvents} />
         </div>
 
-        {/* Bot activity column */}
+        {/* Bot activity column. display:flex + BotLog's flex:1/minHeight:0
+            (instead of height:100%) lets a mobile max-height cap on this
+            box actually work: a percentage height on a child only resolves
+            against an ancestor with a *definite* height, and max-height
+            alone never makes an auto-height box definite — but the flex
+            layout algorithm is explicitly defined to handle a max-height-
+            constrained flex container correctly, shrinking to content below
+            the cap and clamping (with the child sharing the difference)
+            above it. */}
         <div
-          className="dash-chat-col dark-scroll"
+          className="dash-chat-col"
           style={{
             width: 360,
             flexShrink: 0,
-            height: "100%",
-            overflowY: "auto",
+            minHeight: 0,
+            display: "flex",
+            flexDirection: "column",
             padding: "14px 14px 14px 0",
           }}
         >
