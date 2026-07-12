@@ -190,19 +190,27 @@ class SignalGenerator:
         # prev_day_bias  0 = first day or flat candle → no filter applied.
         if cfg.use_daily_bias and prev_day_bias != 0:
             if direction == "long"  and prev_day_bias == -1:
+                self._log(f"[SB] Signal rejected | daily bias mismatch (bearish yesterday) | bar={bar_idx} | {date_str} w{window_id}")
                 return None
             if direction == "short" and prev_day_bias == 1:
+                self._log(f"[SB] Signal rejected | daily bias mismatch (bullish yesterday) | bar={bar_idx} | {date_str} w{window_id}")
                 return None
 
         # Sanity: entry must be on the correct side of the stop
         if direction == "long" and entry <= stop:
+            self._log(f"[SB] Signal rejected | entry {entry:.2f} not above stop {stop:.2f} | bar={bar_idx} | {date_str} w{window_id}")
             return None
         if direction == "short" and entry >= stop:
+            self._log(f"[SB] Signal rejected | entry {entry:.2f} not below stop {stop:.2f} | bar={bar_idx} | {date_str} w{window_id}")
             return None
 
         # Minimum risk guard — skips degenerate setups where FVG nearly touches stop
         risk_points = abs(entry - stop)
         if risk_points < cfg.min_risk_points:
+            self._log(
+                f"[SB] Signal rejected | risk {risk_points:.2f}pts below minimum "
+                f"{cfg.min_risk_points:.2f}pts | bar={bar_idx} | {date_str} w{window_id}"
+            )
             return None
 
         target = _compute_target(direction, entry, stop, highs, lows, bar_idx, cfg)
@@ -243,12 +251,18 @@ class SignalGenerator:
             stop = sweep_level + cfg.stop_buffer_points
 
         if direction == "long" and entry <= stop:
+            self._log(f"[SB] Sweep-entry rejected | entry {entry:.2f} not above stop {stop:.2f} | bar={bar_idx} w{window_id}")
             return None
         if direction == "short" and entry >= stop:
+            self._log(f"[SB] Sweep-entry rejected | entry {entry:.2f} not below stop {stop:.2f} | bar={bar_idx} w{window_id}")
             return None
 
         risk = abs(entry - stop)
         if risk < cfg.min_risk_points:
+            self._log(
+                f"[SB] Sweep-entry rejected | risk {risk:.2f}pts below minimum "
+                f"{cfg.min_risk_points:.2f}pts | bar={bar_idx} w{window_id}"
+            )
             return None
 
         target = entry + cfg.rr * risk if direction == "long" else entry - cfg.rr * risk

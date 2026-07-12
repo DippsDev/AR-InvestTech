@@ -19,7 +19,7 @@ export default function BotLog({ log, running }: Props) {
         borderRadius: 8,
         display: "flex",
         flexDirection: "column",
-        height: "100%",
+        flex: 1,
         minHeight: 0,
         overflow: "hidden",
       }}

@@ -64,12 +64,41 @@ class SilverBulletBot:
             logger.error("US30 symbol not found on this broker — set SB_SYMBOL in .env")
             return False
 
+        self._log_connection_diagnostics(resolved)
+
         self.running = True
         windows_str = ", ".join(f"{s}-{e} ET" for s, e in self.cfg.windows)
         order_type = "MARKET" if self.cfg.use_market_order else "LIMIT"
         news_mode = "SKIP NEWS" if self.cfg.skip_news_days else "NEWS ALLOWED"
         logger.info(f"Bot ready | Symbol: {self._symbol} | Windows: {windows_str} | Order: {order_type} | {news_mode}")
         return True
+
+    def _log_connection_diagnostics(self, symbol: str) -> None:
+        """Log the account/symbol/terminal details worth knowing at a glance
+        whenever the bot starts — the same things worth checking by hand
+        when diagnosing "is this actually connected and able to trade"."""
+        try:
+            import MetaTrader5 as mt5
+            acc = mt5.account_info()
+            if acc:
+                logger.info(
+                    f"Account | Login: {acc.login} | Server: {acc.server} | "
+                    f"Leverage: 1:{acc.leverage} | Currency: {acc.currency} | "
+                    f"AlgoTrading allowed: {acc.trade_expert} | Trade allowed: {acc.trade_allowed}"
+                )
+            info = mt5.symbol_info(symbol)
+            tick = mt5.symbol_info_tick(symbol)
+            if info and tick:
+                spread_pts = (tick.ask - tick.bid) / info.point if info.point else 0
+                logger.info(
+                    f"Symbol | {symbol} | trade_mode={info.trade_mode} (4=full) | "
+                    f"volume_min={info.volume_min} volume_max={info.volume_max} "
+                    f"step={info.volume_step} | digits={info.digits} | "
+                    f"spread={spread_pts:.1f}pts | bid={tick.bid} ask={tick.ask}"
+                )
+            logger.info(f"Terminal | Path: {config.MT5_PATH or '(auto-detected)'}")
+        except Exception as exc:
+            logger.warning(f"Connection diagnostics unavailable: {exc}")
 
     def run(self) -> None:
         if not self.initialize():
