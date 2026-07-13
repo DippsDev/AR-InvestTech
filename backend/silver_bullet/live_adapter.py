@@ -30,6 +30,8 @@ import pandas as pd
 
 import config as root_config
 
+from src.ticket_store import record_ticket
+
 from .config import SilverBulletConfig
 from .news_calendar import is_news_day
 from .strategy import Signal, SignalGenerator
@@ -378,6 +380,7 @@ class SilverBulletLiveAdapter:
                 if self._pending_is_off_hours:
                     self._off_hours_fills += 1
                 self._pending_ticket = None
+                record_ticket(pos.ticket)
                 label = " [off-hours]" if self._open_is_off_hours else ""
                 logger.info(
                     f"[SB] Limit filled → position #{pos.ticket} "
@@ -627,6 +630,7 @@ class SilverBulletLiveAdapter:
             self._trail_best_price    = None
             if is_off_hrs:
                 self._off_hours_fills += 1
+            record_ticket(result.order)
             logger.info(
                 f"[SB] MARKET {signal.direction.upper()} | {symbol} | "
                 f"Lots={lots:.2f} | Fill={fill_price:.2f} "

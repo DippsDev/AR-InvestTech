@@ -422,12 +422,19 @@ class BotBridge:
         try:
             import MetaTrader5 as mt5
             from silver_bullet.live_adapter import SB_MAGIC
+            from src.ticket_store import load_tickets
             from_dt = datetime.now() - timedelta(days=30)
             deals = mt5.history_deals_get(from_dt, datetime.now()) or []
 
+            # Some brokers (e.g. AtlasFunded-Server) zero out `magic` on
+            # deals regardless of what the order set, so magic alone can't
+            # be trusted to identify this bot's trades. Fall back to the
+            # locally recorded ticket numbers the bot confirmed opening.
+            known_tickets = load_tickets()
+
             opens, closes = {}, []
             for d in deals:
-                if d.magic != SB_MAGIC:
+                if d.magic != SB_MAGIC and d.position_id not in known_tickets:
                     continue
                 if d.entry == mt5.DEAL_ENTRY_IN:
                     opens[d.position_id] = d
