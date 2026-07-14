@@ -330,9 +330,13 @@ def disconnect_mt5() -> None:
         pass
 
 
-def find_us30_symbol() -> str | None:
-    """Search available MT5 symbols for the US30/Dow Jones instrument."""
-    for name in _US30_CANDIDATES:
+def find_symbol(
+    candidates: list[str], fallback_tokens: tuple[str, ...], label: str
+) -> str | None:
+    """Generic broker-symbol resolver: try each candidate name exactly, then
+    fall back to a substring scan of every available symbol. `label` is only
+    used for log messages (e.g. "US30", "EURUSD")."""
+    for name in candidates:
         if not name:
             continue
         info = mt5.symbol_info(name)
@@ -340,20 +344,44 @@ def find_us30_symbol() -> str | None:
             mt5.symbol_select(name, True)
             info = mt5.symbol_info(name)
         if info is not None:
-            logger.info(f"Resolved US30 symbol: {name}")
+            logger.info(f"Resolved {label} symbol: {name}")
             return name
 
     all_syms = mt5.symbols_get() or []
     for s in all_syms:
         n = s.name.upper()
-        if any(token in n for token in ("US30", "DJ30", "DJIA", "WALL", "W30")):
+        if any(token in n for token in fallback_tokens):
             mt5.symbol_select(s.name, True)
             if mt5.symbol_info(s.name) is not None:
-                logger.info(f"Resolved US30 symbol (search): {s.name}")
+                logger.info(f"Resolved {label} symbol (search): {s.name}")
                 return s.name
 
-    logger.warning("No US30 symbol found. Set SB_SYMBOL in .env to the correct name.")
+    logger.warning(f"No {label} symbol found. Set the corresponding *_SYMBOL env var.")
     return None
+
+
+def find_us30_symbol() -> str | None:
+    """Search available MT5 symbols for the US30/Dow Jones instrument."""
+    return find_symbol(_US30_CANDIDATES, ("US30", "DJ30", "DJIA", "WALL", "W30"), "US30")
+
+
+# Common symbol names used by brokers for EURUSD. Most brokers use the plain
+# "EURUSD" name; the suffixed variants cover ECN/raw-spread account types.
+_EURUSD_CANDIDATES = [
+    config.TL_SYMBOL,
+    "EURUSD",
+    "EURUSD.a",
+    "EURUSDm",
+    "EURUSD.r",
+    "EURUSDpro",
+    "EURUSD.raw",
+    "#EURUSD",
+]
+
+
+def find_eurusd_symbol() -> str | None:
+    """Search available MT5 symbols for the EURUSD instrument."""
+    return find_symbol(_EURUSD_CANDIDATES, ("EURUSD",), "EURUSD")
 
 
 def get_account_info() -> dict | None:

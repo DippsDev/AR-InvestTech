@@ -99,6 +99,50 @@ SB_MARKET_ORDER = os.getenv("SB_MARKET_ORDER", "false").lower() == "true"
 # Sweep entry mode: enter at market on sweep detection alone, no FVG required (test/demo only)
 SB_SWEEP_ENTRY  = os.getenv("SB_SWEEP_ENTRY",  "false").lower() == "true"
 
+# Trendline strategy — EURUSD, H1 candles, aggressive market-order entries on
+# trendline touch + reversal candlestick confirmation. Runs alongside Silver
+# Bullet in the same bot process; fully independent (own magic number, own
+# risk config). Off by default so existing installs are unaffected.
+TL_SYMBOL  = os.getenv("TL_SYMBOL", "EURUSD")
+TL_ENABLED = os.getenv("TL_ENABLED", "false").lower() == "true"
+
+try:
+    TL_RISK_PCT = float(os.getenv("TL_RISK_PCT", "1.0"))
+except ValueError:
+    TL_RISK_PCT = 1.0
+
+try:
+    TL_MIN_BALANCE = float(os.getenv("TL_MIN_BALANCE", "15.0"))
+except ValueError:
+    TL_MIN_BALANCE = 15.0
+
+try:
+    TL_MAX_RISK_USD = float(os.getenv("TL_MAX_RISK_USD", "1.0"))
+except ValueError:
+    TL_MAX_RISK_USD = 1.0
+
+try:
+    TL_SMALL_ACCT_THRESHOLD = float(os.getenv("TL_SMALL_ACCT_THRESHOLD", "150.0"))
+except ValueError:
+    TL_SMALL_ACCT_THRESHOLD = 150.0
+
+try:
+    TL_MAX_DRAWDOWN_PCT = float(os.getenv("TL_MAX_DRAWDOWN_PCT", "50.0"))
+except ValueError:
+    TL_MAX_DRAWDOWN_PCT = 50.0
+
+try:
+    TL_DAILY_LOSS_LIMIT_USD = float(os.getenv("TL_DAILY_LOSS_LIMIT_USD", "10.0"))
+except ValueError:
+    TL_DAILY_LOSS_LIMIT_USD = 10.0
+
+try:
+    TL_MAX_TRADES_PER_DAY = int(os.getenv("TL_MAX_TRADES_PER_DAY", "3"))
+except ValueError:
+    TL_MAX_TRADES_PER_DAY = 3
+
+TL_NEWS = os.getenv("TL_NEWS", "true").lower() == "true"
+
 # Logging
 LOG_FILE  = str(paths.app_data_dir() / "logs" / "trades.log")
 LOG_LEVEL = "INFO"

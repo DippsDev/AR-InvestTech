@@ -9,7 +9,15 @@ import time
 import config
 from silver_bullet.config import SilverBulletConfig
 from silver_bullet.live_adapter import SilverBulletLiveAdapter
-from src.data_collector import connect_mt5, disconnect_mt5, find_us30_symbol, get_account_info
+from trendline.config import TrendlineConfig
+from trendline.live_adapter import TrendlineLiveAdapter
+from src.data_collector import (
+    connect_mt5,
+    disconnect_mt5,
+    find_eurusd_symbol,
+    find_us30_symbol,
+    get_account_info,
+)
 from src.logger import logger
 
 
@@ -20,10 +28,15 @@ class SilverBulletBot:
             cfg.one_trade_per_window = False
             cfg.fvg_min_points = 3.0
             cfg.min_risk_points = 2.0
-            # Prepend London session windows (03:00–05:00 ET) for extra setups
+            # London session windows (03:00-05:00 ET) plus an early-afternoon
+            # NY window (13:30-14:30 ET), on top of the core 10:00-12:00 pair.
+            # Backtested combination (see 3y US30 M5 backtest): 97 trades vs
+            # 67 baseline, win rate 55.7% vs 52.2%, profit factor 2.55 vs 2.60
+            # — meaningfully more frequent for almost no edge cost.
             cfg.windows = [
                 ("03:00", "04:00"), ("04:00", "05:00"),
                 ("10:00", "11:00"), ("11:00", "12:00"),
+                ("13:30", "14:30"),
             ]
         if config.SB_OFF_HOURS:
             cfg.off_hours_trading = True
@@ -39,6 +52,18 @@ class SilverBulletBot:
         self.adapter = SilverBulletLiveAdapter(cfg, symbol=None)
         self.running = False
         self._gui_mode = gui_mode  # when True, bridge owns MT5 — skip disconnect on shutdown
+
+        # Trendline strategy — independent second strategy, off by default.
+        # Fully gated so that when TL_ENABLED is false (the default), every
+        # branch below is skipped and behavior is identical to before this
+        # strategy existed.
+        self.tl_enabled = config.TL_ENABLED
+        self.tl_symbol: str | None = None
+        self.tl_adapter: TrendlineLiveAdapter | None = None
+        if self.tl_enabled:
+            tl_cfg = TrendlineConfig()
+            tl_cfg.skip_news_days = config.TL_NEWS
+            self.tl_adapter = TrendlineLiveAdapter(tl_cfg, symbol=None)
 
     def initialize(self) -> bool:
         logger.info("=" * 60)
@@ -65,6 +90,19 @@ class SilverBulletBot:
             return False
 
         self._log_connection_diagnostics(resolved)
+
+        if self.tl_enabled:
+            tl_resolved = find_eurusd_symbol()
+            if tl_resolved:
+                config.TL_SYMBOL = tl_resolved
+                self.tl_symbol = tl_resolved
+                self.tl_adapter._symbol = tl_resolved
+                logger.info(f"Trendline strategy enabled | Symbol: {tl_resolved}")
+            else:
+                logger.warning(
+                    "EURUSD symbol not found — Trendline strategy disabled for this run"
+                )
+                self.tl_enabled = False
 
         self.running = True
         windows_str = ", ".join(f"{s}-{e} ET" for s, e in self.cfg.windows)
@@ -112,9 +150,14 @@ class SilverBulletBot:
                     self.adapter.cycle(symbol)
                 except Exception as exc:
                     logger.error(f"[SB] Error in cycle: {exc}", exc_info=True)
-                # 30-second sleep with a 1-second heartbeat so the log shows
+                if self.tl_enabled and self.tl_symbol:
+                    try:
+                        self.tl_adapter.cycle(self.tl_symbol)
+                    except Exception as exc:
+                        logger.error(f"[TL] Error in cycle: {exc}", exc_info=True)
+                # 5-second sleep with a 1-second heartbeat so the log shows
                 # the bot is alive at every second.
-                for remaining in range(30, 0, -1):
+                for remaining in range(5, 0, -1):
                     if not self.running:
                         break
                     logger.info(f"[SB] Heartbeat | next cycle in {remaining}s")
@@ -127,6 +170,8 @@ class SilverBulletBot:
     def _shutdown(self) -> None:
         logger.info("Closing positions and disconnecting...")
         self.adapter.shutdown(self._symbol or config.SB_SYMBOL)
+        if self.tl_enabled and self.tl_symbol:
+            self.tl_adapter.shutdown(self.tl_symbol)
         if not self._gui_mode:
             disconnect_mt5()
         logger.info("Bot stopped.")

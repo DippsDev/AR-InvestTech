@@ -1,0 +1,78 @@
+"""All strategy tunables in one place. Change here; nowhere else.
+
+Unlike SilverBulletConfig's defaults (tuned against 3 years of US30 M5
+history), these numbers are reasoned starting points, not backtested —
+there is no historical EURUSD H1 run through this logic yet. Validate on
+a demo account (or a future trendline/backtest.py harness) before relying
+on them.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+
+@dataclass
+class TrendlineConfig:
+    # ── Instrument ────────────────────────────────────────────────────────────
+    symbol: str = "EURUSD"
+    bars_lookback: int = 300   # H1 bars fetched per cycle (~12.5 days of 24/5 data)
+
+    # ── Swing detection ───────────────────────────────────────────────────────
+    # Bars required on each side of a pivot to confirm it as a swing point.
+    swing_lookback: int = 3
+
+    # ── Trendline construction ────────────────────────────────────────────────
+    # Bars used for the rolling average bar-range that steepness is judged against.
+    avg_range_lookback: int = 20
+    # Reject a candidate line if |slope per bar| > this * avg_bar_range.
+    # The source material's own guidance: gently-sloping trendlines are strong
+    # and reliable; steep ones are weak and rarely obeyed more than once.
+    steepness_max_ratio: float = 1.0
+    # Wiggle room (in points) allowed for bars strictly between the two anchor
+    # points before the line is rejected as "drawn through an obstruction".
+    obstruction_tolerance_points: float = 3.0
+
+    # ── Trendline invalidation / touch ────────────────────────────────────────
+    # A bar CLOSING beyond the line by more than this retires it; closing
+    # beyond it by less is treated as a temporary breach (line stays active).
+    breach_tolerance_points: float = 5.0
+    # How close price must come to the line's current value to count as a touch.
+    touch_tolerance_points: float = 3.0
+
+    # ── Candlestick confirmation ──────────────────────────────────────────────
+    candle_body_ratio_max: float = 0.30    # doji/hammer/spinning-top body-vs-range ceiling
+    candle_wick_ratio_min: float = 2.0     # hammer/shooting-star wick-vs-body floor
+    railway_length_ratio_min: float = 1.5  # railway-track body-vs-avg-body floor
+    avg_body_lookback: int = 20
+
+    # ── Stop loss ─────────────────────────────────────────────────────────────
+    # Extra distance beyond the touching candle's extreme for the initial stop.
+    stop_buffer_points: float = 5.0
+    # Minimum risk in points; signals with a smaller stop distance are skipped.
+    min_risk_points: float = 15.0
+
+    # ── Profit target ─────────────────────────────────────────────────────────
+    # "opposite_swing" : nearest confirmed swing on the other side, if it clears
+    #                    min_rr_for_swing_target; else falls back to "rr".
+    # "rr"             : fixed risk-to-reward ratio.
+    target_mode: str = "opposite_swing"
+    rr: float = 3.0   # the document's own stated R:R floor ("always R:R above 1:3")
+    min_rr_for_swing_target: float = 3.0
+
+    # ── Trade management ──────────────────────────────────────────────────────
+    # Move stop to entry once price travels this many R in our favour.
+    breakeven_r: float = 1.0
+    # After breakeven triggers, trail stop this many R behind the best price.
+    trail_r: float = 0.5
+
+    # ── Discipline ────────────────────────────────────────────────────────────
+    # No session windows (EURUSD trades ~24/5) — at most one open/pending
+    # position at a time; no add-on/pyramiding in v1.
+    one_trade_at_a_time: bool = True
+    # Skip new entries on high-impact US macro news days (reuses
+    # silver_bullet.news_calendar.is_news_day — that calendar is generic,
+    # not Silver-Bullet-specific).
+    skip_news_days: bool = True
+    # v1 is aggressive-entry-only; kept as a field so a future conservative
+    # (pending-order) mode is a config flip, not a rewrite.
+    use_market_order: bool = True

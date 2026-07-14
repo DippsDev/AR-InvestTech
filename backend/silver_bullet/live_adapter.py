@@ -855,7 +855,7 @@ class SilverBulletLiveAdapter:
         raw = risk_usd / (risk_pts * value_per_pt)
         step = sym_info.volume_step
         lots = round(raw / step) * step
-        lots = max(sym_info.volume_min, min(lots, sym_info.volume_max, 1.0))
+        lots = max(sym_info.volume_min, min(lots, sym_info.volume_max, 8.0))
 
         # If broker rounding / minimum volume forces us to risk more than
         # 5% of capital, skip the trade rather than overshoot.
@@ -903,7 +903,11 @@ class SilverBulletLiveAdapter:
             hour=0, minute=0, second=0, microsecond=0
         )
         from_date = ny_midnight.astimezone(timezone.utc)
-        to_date = datetime.now(timezone.utc)
+        # Some broker trade servers (e.g. AtlasFunded-Server) timestamp deals
+        # several hours ahead of true UTC. Without this padding, trades from
+        # the last few hours would look like they're "in the future" and get
+        # excluded here — silently undercounting today's loss/trade count.
+        to_date = datetime.now(timezone.utc) + timedelta(hours=6)
 
         try:
             deals = mt5.history_deals_get(from_date, to_date) or []

@@ -324,7 +324,6 @@ class BotBridge:
 
         import config as _cfg
         import MetaTrader5 as mt5
-        from datetime import datetime, timezone
         market_open = False
         price = None
         if self._mt5_ok and _cfg.SB_SYMBOL:
@@ -397,7 +396,9 @@ class BotBridge:
         try:
             import MetaTrader5 as mt5
             from silver_bullet.live_adapter import SB_MAGIC
-            return [p for p in (mt5.positions_get() or []) if p.magic == SB_MAGIC]
+            from trendline.live_adapter import TL_MAGIC
+            magics = (SB_MAGIC, TL_MAGIC)
+            return [p for p in (mt5.positions_get() or []) if p.magic in magics]
         except Exception:
             return []
 
@@ -422,9 +423,16 @@ class BotBridge:
         try:
             import MetaTrader5 as mt5
             from silver_bullet.live_adapter import SB_MAGIC
+            from trendline.live_adapter import TL_MAGIC
             from src.ticket_store import load_tickets
+            magics = (SB_MAGIC, TL_MAGIC)
             from_dt = datetime.now() - timedelta(days=30)
-            deals = mt5.history_deals_get(from_dt, datetime.now()) or []
+            # Some broker trade servers (e.g. AtlasFunded-Server) timestamp
+            # deals several hours ahead of true UTC. Padding the upper bound
+            # keeps very recent trades from looking like they're "in the
+            # future" and getting excluded from the range query.
+            to_dt = datetime.now() + timedelta(hours=6)
+            deals = mt5.history_deals_get(from_dt, to_dt) or []
 
             # Some brokers (e.g. AtlasFunded-Server) zero out `magic` on
             # deals regardless of what the order set, so magic alone can't
@@ -434,7 +442,7 @@ class BotBridge:
 
             opens, closes = {}, []
             for d in deals:
-                if d.magic != SB_MAGIC and d.position_id not in known_tickets:
+                if d.magic not in magics and d.position_id not in known_tickets:
                     continue
                 if d.entry == mt5.DEAL_ENTRY_IN:
                     opens[d.position_id] = d
