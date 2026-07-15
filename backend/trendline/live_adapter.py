@@ -17,12 +17,17 @@ Design notes
 - bar_idx is always the index in the CURRENT cycle's array — the
   SignalGenerator only carries trendline/trade-active state across calls,
   not price data, so this is safe (same discipline as Silver Bullet's adapter).
+- Multiple open positions can be live at once, each tracked by its own MT5
+  ticket in `_open` — see cfg.one_trade_at_a_time (default False) in
+  trendline/config.py. The only throttle on how many trades happen in a day
+  is TL_MAX_TRADES_PER_DAY (enforced in _check_daily_limits).
 - Magic number 202411001 is reserved for the Trendline strategy (distinct
   from Silver Bullet's SB_MAGIC = 202406122).
 """
 from __future__ import annotations
 
-from datetime import datetime
+from dataclasses import dataclass, replace as _dc_replace
+from datetime import datetime, time as dtime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
@@ -31,13 +36,23 @@ import pandas as pd
 
 import config as root_config
 
-from src.ticket_store import record_ticket
+from src.broker_time import get_broker_utc_offset
+from src.ticket_store import load_tickets, record_ticket
 
 from .config import TrendlineConfig
 from .strategy import Signal, SignalGenerator
 
 NY_TZ = ZoneInfo("America/New_York")
 TL_MAGIC = 202411001
+
+
+@dataclass
+class _OpenPosition:
+    """A filled position this adapter is managing (breakeven/trail)."""
+    signal: Signal
+    fill_price: float
+    breakeven_triggered: bool = False
+    trail_best_price: Optional[float] = None
 
 
 class TrendlineLiveAdapter:
@@ -48,13 +63,11 @@ class TrendlineLiveAdapter:
         self._generator = SignalGenerator(cfg)
         self._symbol: Optional[str] = symbol
         self._last_bar_time: Optional[pd.Timestamp] = None
-        self._open_ticket: Optional[int] = None
-        self._open_signal: Optional[Signal] = None
-        self._open_fill_price: Optional[float] = None
+        # Open positions this adapter placed, keyed by MT5 ticket — a dict
+        # rather than a single slot so several can be live at once when
+        # cfg.one_trade_at_a_time is False (see module docstring).
+        self._open: dict[int, _OpenPosition] = {}
         self._initialized: bool = False
-        # Breakeven / trailing stop tracking for the open position
-        self._breakeven_triggered: bool = False
-        self._trail_best_price: Optional[float] = None
         # News-day tracking (to log once per day)
         self._news_skip_date: str = ""
         # Drawdown circuit breaker
@@ -65,6 +78,13 @@ class TrendlineLiveAdapter:
         self._daily_loss_usd: float = 0.0
         self._daily_trades: int = 0
         self._daily_limit_halted: bool = False
+        # Broker/trade-server clock offset from true UTC, remeasured each
+        # cycle — see src/broker_time.py.
+        self._broker_utc_offset: timedelta = timedelta(0)
+        # Adaptive daily-trade floor: bot.py sets this each loop tick to the
+        # combined SB+TL trade count for today (see _boost_active below).
+        self.combined_daily_trades: int = 0
+        self._boost_notified: bool = False
 
     # ------------------------------------------------------------------
     # Public API
@@ -75,40 +95,54 @@ class TrendlineLiveAdapter:
         trendline setup."""
         from src.logger import logger
 
-        logger.info(
+        logger.debug(
             f"[TL] Cycle start | symbol={symbol} | initialized={self._initialized} | "
-            f"open={self._open_ticket}"
+            f"open={list(self._open)}"
         )
 
         if not self._validate_symbol(symbol):
-            logger.info("[TL] Cycle aborted | symbol validation failed")
+            logger.debug("[TL] Cycle aborted | symbol validation failed")
             return
 
+        # MT5 timestamps (bars, ticks, deals) are stamped in the broker's own
+        # server clock, not true UTC — measure the current offset once per
+        # cycle so every date/daily-count calc below can correct for it.
+        # See src/broker_time.py.
+        self._broker_utc_offset = get_broker_utc_offset(symbol)
+
         if self._drawdown_halted:
-            logger.info("[TL] Cycle skipped | drawdown circuit breaker active")
+            logger.debug("[TL] Cycle skipped | drawdown circuit breaker active")
             return
         if not self._check_drawdown_floor(symbol):
-            logger.info("[TL] Cycle skipped | drawdown floor breached")
+            logger.debug("[TL] Cycle skipped | drawdown floor breached")
             return
-        if not self._check_daily_limits(symbol):
-            logger.info("[TL] Cycle skipped | daily limit reached")
-            return
+
+        # Daily entry cap: this only gates NEW entries later in the cycle —
+        # positions already open are still synced and managed below
+        # regardless, so reaching the cap never leaves an open trade without
+        # breakeven/trailing for the rest of the day.
+        can_enter_new = self._check_daily_limits(symbol)
 
         bars = self._fetch_bars(symbol, n=self._cfg.bars_lookback)
         if bars is None or len(bars) < 10:
             if not self._market_is_open(symbol):
-                logger.info(f"[TL] Market closed for {symbol} — waiting for reopen")
+                logger.debug(f"[TL] Market closed for {symbol} — waiting for reopen")
             else:
                 logger.warning(f"[TL] Bar fetch failed for {symbol}")
             return
 
+        # Bars come back timestamped in the broker's server clock (labeled
+        # "UTC" but not actually true UTC on some brokers) — correct to true
+        # UTC before any date/session math is done on them.
+        bars.index = bars.index - self._broker_utc_offset
+
         # Drop the currently-forming (incomplete) bar
         completed = bars.iloc[:-1]
         if completed.empty:
-            logger.info("[TL] Cycle skipped | no completed bars available")
+            logger.debug("[TL] Cycle skipped | no completed bars available")
             return
 
-        logger.info(
+        logger.debug(
             f"[TL] Bars fetched | total={len(bars)} completed={len(completed)} | "
             f"first={completed.index[0]} UTC | last={completed.index[-1]} UTC"
         )
@@ -119,87 +153,112 @@ class TrendlineLiveAdapter:
         closes = completed["close"].to_numpy(dtype=float)
         opens  = completed["open"].to_numpy(dtype=float)
 
-        # 1. Detect if the open position was closed externally (SL/TP hit)
-        self._sync_position(symbol)
-
-        # 2. Manage open position (breakeven/trail) and return — no new
-        #    scanning while a position is open (one_trade_at_a_time).
-        if self._open_ticket is not None:
-            positions = mt5.positions_get(ticket=self._open_ticket) or []
-            if positions:
-                pos  = positions[0]
-                side = "LONG" if pos.type == mt5.ORDER_TYPE_BUY else "SHORT"
-                logger.info(
-                    f"[TL] Position status | #{pos.ticket} | {side} | "
-                    f"Price={pos.price_current:.5f} | P&L=${pos.profit:+.2f}"
-                )
-            self._check_breakeven(symbol)
-            logger.info("[TL] Cycle end | open position management complete")
-            return
-
         today_ny = datetime.now(NY_TZ).date().isoformat()
 
         # News-day circuit breaker: no new entries on high-impact macro days.
+        # Existing positions are still managed below (not flattened) — this
+        # only blocks new entries, matching Silver Bullet's off-hours flow.
         from silver_bullet.news_calendar import is_news_day
-        if self._cfg.skip_news_days and is_news_day(today_ny):
-            if self._news_skip_date != today_ny:
-                logger.info(f"[TL] News day {today_ny} — trading paused for high-impact macro releases")
-                self._news_skip_date = today_ny
+        news_skip = self._cfg.skip_news_days and is_news_day(today_ny)
+        if news_skip and self._news_skip_date != today_ny:
+            logger.info(f"[TL] News day {today_ny} — trading paused for high-impact macro releases")
+            self._news_skip_date = today_ny
+
+        # 1. Detect positions MT5 already closed externally (SL/TP hit)
+        self._sync_position(symbol)
+
+        # 2. Manage every open position (breakeven/trail). Runs even if the
+        #    daily cap or a news day is blocking new entries.
+        for ticket in list(self._open):
+            pos = self._open.get(ticket)
+            if pos is None:
+                continue
+            positions = mt5.positions_get(ticket=ticket) or []
+            if positions:
+                live = positions[0]
+                side = "LONG" if live.type == mt5.ORDER_TYPE_BUY else "SHORT"
+                logger.debug(
+                    f"[TL] Position status | #{live.ticket} | {side} | "
+                    f"Price={live.price_current:.5f} | P&L=${live.profit:+.2f}"
+                )
+            self._check_breakeven(symbol, ticket)
+
+        if not can_enter_new or news_skip:
+            logger.debug("[TL] Cycle end | new entries blocked")
             return
 
         # 3. Feed unprocessed bars through the signal generator
         latest_idx = len(times) - 1
         processed_count = 0
         signal_count = 0
-        for i, ts in enumerate(times):
-            if self._last_bar_time is not None and ts <= self._last_bar_time:
-                continue
-            processed_count += 1
-
-            ts_ny = ts.astimezone(NY_TZ)
-            date_str = ts_ny.date().isoformat()
-
-            signal = self._generator.on_bar(
-                bar_idx=i, highs=highs, lows=lows, closes=closes, opens=opens,
-                date_str=date_str,
-            )
-
-            if signal is not None:
-                signal_count += 1
-
-            # Act on today's signals only. On the very first cycle, only
-            # trade the most recent completed bar so we don't fire on stale
-            # history built up while warming the generator's state.
-            if signal is not None and date_str == today_ny:
-                if not self._initialized and i != latest_idx:
-                    logger.info(
-                        f"[TL] Signal skipped | init warmup | bar={i} latest={latest_idx}"
-                    )
+        boost_active = self._boost_active()
+        original_cfg = self._generator._cfg
+        if boost_active:
+            self._generator._cfg = self._boosted_cfg(original_cfg)
+        try:
+            for i, ts in enumerate(times):
+                if self._last_bar_time is not None and ts <= self._last_bar_time:
                     continue
-                lots = self._compute_lots(symbol, signal)
-                if lots is not None:
-                    self._place_market(symbol, signal, lots)
-                break  # one market order per cycle
-            elif signal is not None:
-                logger.info(
-                    f"[TL] Signal skipped | init={self._initialized} | "
-                    f"date={date_str} today={today_ny}"
+                processed_count += 1
+
+                ts_ny = ts.astimezone(NY_TZ)
+                date_str = ts_ny.date().isoformat()
+
+                signal = self._generator.on_bar(
+                    bar_idx=i, highs=highs, lows=lows, closes=closes, opens=opens,
+                    date_str=date_str,
                 )
 
-        logger.info(
+                if signal is not None:
+                    signal_count += 1
+
+                # Act on today's signals only. On the very first cycle, only
+                # trade the most recent completed bar so we don't fire on stale
+                # history built up while warming the generator's state.
+                if signal is not None and date_str == today_ny:
+                    if not self._initialized and i != latest_idx:
+                        logger.debug(
+                            f"[TL] Signal skipped | init warmup | bar={i} latest={latest_idx}"
+                        )
+                        continue
+                    lots = self._compute_lots(symbol, signal)
+                    if lots is not None:
+                        logger.info(
+                            f"[TL] About to place order | {signal.direction.upper()} | "
+                            f"entry={signal.entry_price:.5f} stop={signal.stop_price:.5f} "
+                            f"target={signal.target_price:.5f} | lots={lots:.2f}"
+                        )
+                        self._place_market(symbol, signal, lots)
+                    break  # one new order per cycle
+                elif signal is not None:
+                    logger.debug(
+                        f"[TL] Signal skipped | init={self._initialized} | "
+                        f"date={date_str} today={today_ny}"
+                    )
+        finally:
+            self._generator._cfg = original_cfg
+
+        logger.debug(
             f"[TL] Signal scan complete | processed={processed_count} | "
             f"signals_found={signal_count}"
         )
+        # Routine heartbeat for the dashboard's Scanner persona: fires once
+        # per newly-closed bar, not every cycle tick, so the feed reads as
+        # periodic status rather than spam.
+        if processed_count > 0 and signal_count == 0:
+            logger.info(
+                f"[TL] No setup on {processed_count} new bar(s) | price={closes[-1]:.5f}"
+            )
 
         if times:
             self._last_bar_time = times[-1]
         self._initialized = True
-        logger.info("[TL] Cycle end | watermark advanced | init=True")
+        logger.debug("[TL] Cycle end | watermark advanced | init=True")
 
     def shutdown(self, symbol: str) -> None:
-        """Close any open position on shutdown."""
-        if self._open_ticket is not None:
-            self._time_exit(symbol)
+        """Close all open positions on shutdown."""
+        for ticket in list(self._open):
+            self._time_exit(symbol, ticket)
 
     # ------------------------------------------------------------------
     # MT5 operations
@@ -226,29 +285,32 @@ class TrendlineLiveAdapter:
             return False
         if sym.trade_mode != mt5.SYMBOL_TRADE_MODE_FULL:
             return False
-        last_tick = datetime.fromtimestamp(tick.time, tz=timezone.utc)
+        # tick.time is the broker's server clock, not true UTC — correct it
+        # before measuring staleness, or a fast/slow broker clock makes this
+        # check silently wrong (e.g. always "fresh" for a clock running ahead).
+        last_tick = datetime.fromtimestamp(tick.time, tz=timezone.utc) - self._broker_utc_offset
         age_sec = (datetime.now(tz=timezone.utc) - last_tick).total_seconds()
         return age_sec < 300  # 5 minutes
 
     def _sync_position(self, symbol: str) -> None:
-        """Clear open_ticket when MT5 closes the position via SL or TP, and
-        notify the generator so the one-trade-at-a-time gate lifts."""
-        if self._open_ticket is None:
+        """Drop any open position MT5 has already closed via SL or TP, and
+        notify the generator once nothing is left open (lifts the
+        one-trade-at-a-time gate, when that mode is enabled)."""
+        if not self._open:
             return
-        positions = mt5.positions_get(ticket=self._open_ticket) or []
-        if not positions:
-            from src.logger import logger
-            logger.info(f"[TL] Position #{self._open_ticket} closed by MT5 (SL/TP)")
-            self._open_ticket         = None
-            self._open_signal         = None
-            self._open_fill_price     = None
-            self._breakeven_triggered = False
-            self._trail_best_price    = None
+        from src.logger import logger
+        for ticket in list(self._open):
+            positions = mt5.positions_get(ticket=ticket) or []
+            if not positions:
+                logger.info(f"[TL] Position #{ticket} closed by MT5 (SL/TP)")
+                del self._open[ticket]
+        if not self._open:
             self._generator.notify_trade_closed()
 
-    def _check_breakeven(self, symbol: str) -> None:
+    def _check_breakeven(self, symbol: str, ticket: int) -> None:
         """Move stop to entry at breakeven_r; then trail at trail_r beyond that."""
-        if self._open_signal is None or self._open_fill_price is None:
+        pos = self._open.get(ticket)
+        if pos is None:
             return
 
         tick = mt5.symbol_info_tick(symbol)
@@ -258,70 +320,70 @@ class TrendlineLiveAdapter:
         from src.logger import logger
 
         cfg      = self._cfg
-        sig      = self._open_signal
-        fill     = self._open_fill_price
+        sig      = pos.signal
+        fill     = pos.fill_price
         risk_pts = abs(fill - sig.stop_price)
         is_long  = sig.direction == "long"
         current_px = tick.bid if is_long else tick.ask
 
         # Phase 1 — breakeven
-        if not self._breakeven_triggered and cfg.breakeven_r > 0:
+        if not pos.breakeven_triggered and cfg.breakeven_r > 0:
             trigger_dist = risk_pts * cfg.breakeven_r
             triggered = (
                 current_px >= fill + trigger_dist if is_long
                 else current_px <= fill - trigger_dist
             )
             if triggered:
-                positions = mt5.positions_get(ticket=self._open_ticket) or []
+                positions = mt5.positions_get(ticket=ticket) or []
                 if not positions:
                     return
-                pos      = positions[0]
+                live     = positions[0]
                 sym_info = mt5.symbol_info(symbol)
                 d        = sym_info.digits if sym_info else 5
                 result   = mt5.order_send({
                     "action":   mt5.TRADE_ACTION_SLTP,
                     "symbol":   symbol,
-                    "position": pos.ticket,
+                    "position": live.ticket,
                     "sl":       round(fill, d),
-                    "tp":       round(pos.tp, d),
+                    "tp":       round(live.tp, d),
                 })
                 if result.retcode == mt5.TRADE_RETCODE_DONE:
-                    self._breakeven_triggered = True
-                    logger.info(
-                        f"[TL] Breakeven triggered | #{pos.ticket} | SL moved to {fill:.5f}"
+                    pos.breakeven_triggered = True
+                    logger.debug(
+                        f"[TL] Breakeven triggered | #{live.ticket} | SL moved to {fill:.5f}"
                     )
 
         # Phase 2 — trailing stop (only after breakeven)
-        if self._breakeven_triggered and cfg.trail_r > 0:
+        if pos.breakeven_triggered and cfg.trail_r > 0:
             if is_long:
-                if self._trail_best_price is None or current_px > self._trail_best_price:
-                    self._trail_best_price = current_px
-                new_sl = self._trail_best_price - risk_pts * cfg.trail_r
+                if pos.trail_best_price is None or current_px > pos.trail_best_price:
+                    pos.trail_best_price = current_px
+                new_sl = pos.trail_best_price - risk_pts * cfg.trail_r
             else:
-                if self._trail_best_price is None or current_px < self._trail_best_price:
-                    self._trail_best_price = current_px
-                new_sl = self._trail_best_price + risk_pts * cfg.trail_r
+                if pos.trail_best_price is None or current_px < pos.trail_best_price:
+                    pos.trail_best_price = current_px
+                new_sl = pos.trail_best_price + risk_pts * cfg.trail_r
 
-            positions = mt5.positions_get(ticket=self._open_ticket) or []
+            positions = mt5.positions_get(ticket=ticket) or []
             if not positions:
                 return
-            pos      = positions[0]
+            live     = positions[0]
             sym_info = mt5.symbol_info(symbol)
             d        = sym_info.digits if sym_info else 5
-            current_sl = pos.sl
+            current_sl = live.sl
 
             sl_improves = (new_sl > current_sl) if is_long else (new_sl < current_sl)
             if sl_improves:
                 result = mt5.order_send({
                     "action":   mt5.TRADE_ACTION_SLTP,
                     "symbol":   symbol,
-                    "position": pos.ticket,
+                    "position": live.ticket,
                     "sl":       round(new_sl, d),
-                    "tp":       round(pos.tp, d),
+                    "tp":       round(live.tp, d),
                 })
                 if result.retcode == mt5.TRADE_RETCODE_DONE:
-                    logger.info(
-                        f"[TL] Trail stop updated | #{pos.ticket} | SL moved to {new_sl:.5f}"
+                    logger.debug(
+                        f"[TL] Trail stop updated | #{live.ticket} | SL moved to {new_sl:.5f}"
                     )
 
     def _place_market(self, symbol: str, signal: Signal, lots: float) -> None:
@@ -397,13 +459,12 @@ class TrendlineLiveAdapter:
         if result.retcode == mt5.TRADE_RETCODE_DONE:
             positions = mt5.positions_get(ticket=result.order) or []
             fill_price = positions[0].price_open if positions else price
-            self._open_ticket         = result.order
-            self._open_fill_price     = fill_price
-            self._open_signal         = signal
-            self._breakeven_triggered = False
-            self._trail_best_price    = None
+            self._open[result.order] = _OpenPosition(
+                signal=signal,
+                fill_price=fill_price,
+            )
             self._generator.notify_trade_opened()
-            record_ticket(result.order)
+            record_ticket(result.order, strategy="TL")
             logger.info(
                 f"[TL] MARKET {signal.direction.upper()} | {symbol} | "
                 f"Lots={lots:.2f} | Fill={fill_price:.5f} "
@@ -414,15 +475,16 @@ class TrendlineLiveAdapter:
                 f"[TL] Market order failed | code={result.retcode} | {result.comment}"
             )
 
-    def _time_exit(self, symbol: str) -> None:
-        if self._open_ticket is None:
+    def _time_exit(self, symbol: str, ticket: int) -> None:
+        if ticket not in self._open:
             return
         from src.logger import logger
 
-        positions = mt5.positions_get(ticket=self._open_ticket) or []
+        positions = mt5.positions_get(ticket=ticket) or []
         if not positions:
-            self._open_ticket = None
-            self._generator.notify_trade_closed()
+            del self._open[ticket]
+            if not self._open:
+                self._generator.notify_trade_closed()
             return
 
         pos  = positions[0]
@@ -450,12 +512,9 @@ class TrendlineLiveAdapter:
 
         if result.retcode == mt5.TRADE_RETCODE_DONE:
             logger.info(f"[TL] Shutdown exit | #{pos.ticket} | PnL ${pos.profit:.2f}")
-            self._open_ticket         = None
-            self._open_signal         = None
-            self._open_fill_price     = None
-            self._breakeven_triggered = False
-            self._trail_best_price    = None
-            self._generator.notify_trade_closed()
+            del self._open[ticket]
+            if not self._open:
+                self._generator.notify_trade_closed()
         else:
             logger.error(
                 f"[TL] Shutdown exit failed | code={result.retcode} | {result.comment}"
@@ -481,6 +540,43 @@ class TrendlineLiveAdapter:
             return False
 
         return True
+
+    def _boost_active(self) -> bool:
+        """True once NY time has passed DAILY_TRADE_FLOOR_TIME_ET and the
+        combined SB+TL trade count today (set by bot.py each loop tick) is
+        still below DAILY_TRADE_FLOOR. Never fabricates a trade — callers
+        use this to widen an already-passing signal's tolerances, not to
+        invent one."""
+        threshold = getattr(root_config, "DAILY_TRADE_FLOOR_TIME_ET", "14:00")
+        floor = getattr(root_config, "DAILY_TRADE_FLOOR", 3)
+        h, m = map(int, threshold.split(":"))
+        past_threshold = datetime.now(NY_TZ).time() >= dtime(h, m)
+        active = past_threshold and self.combined_daily_trades < floor
+
+        if active and not self._boost_notified:
+            from src.logger import logger
+            logger.info(
+                f"[TL] Adaptive floor | {self.combined_daily_trades}/{floor} trades by "
+                f"{threshold} ET — relaxing entry filters for the rest of today"
+            )
+            self._boost_notified = True
+        if not active:
+            self._boost_notified = False
+
+        return active
+
+    def _boosted_cfg(self, base: TrendlineConfig) -> TrendlineConfig:
+        """Relax entry filters once the adaptive daily-trade floor has
+        kicked in. Halves the minimum-risk floor and widens touch/steepness
+        tolerances rather than removing them, so a setup still has to clear
+        a real (if lower) bar — this only widens which genuine signals
+        qualify, it never fabricates one."""
+        return _dc_replace(
+            base,
+            min_risk_points=max(3.0, base.min_risk_points * 0.5),
+            touch_tolerance_points=base.touch_tolerance_points * 1.5,
+            steepness_max_ratio=base.steepness_max_ratio * 1.5,
+        )
 
     def _compute_lots(self, symbol: str, signal: Signal) -> Optional[float]:
         from src.logger import logger
@@ -550,7 +646,7 @@ class TrendlineLiveAdapter:
             )
             return None
 
-        logger.info(
+        logger.debug(
             f"[TL] Sizing | Capital=${usable_capital:.2f} RiskPct={risk_pct:.2f}% "
             f"Risk=${risk_usd:.2f} SL={risk_pts:.5f} RawLots={raw:.3f} "
             f"FinalLots={lots:.2f} TickVal={tick_val:.5f}/TickSize={tick_size}"
@@ -564,7 +660,7 @@ class TrendlineLiveAdapter:
         querying MT5 history for today's closed Trendline deals. Resets at
         the start of each NY trading day (same convention as Silver Bullet,
         for a consistent "day" definition across strategies/dashboard)."""
-        from datetime import timezone, timedelta
+        from datetime import timezone
         from src.logger import logger
 
         today_ny = datetime.now(NY_TZ).date().isoformat()
@@ -579,9 +675,13 @@ class TrendlineLiveAdapter:
         if self._daily_limit_halted:
             return False
 
+        # deal.time (like bar/tick time) is stamped in the broker's server
+        # clock, so the from/to boundaries passed to history_deals_get must
+        # be expressed in that same clock — shift our true-UTC boundaries by
+        # the measured broker offset rather than a hardcoded guess.
         ny_midnight = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
-        from_date = ny_midnight.astimezone(timezone.utc)
-        to_date = datetime.now(timezone.utc) + timedelta(hours=6)
+        from_date = ny_midnight.astimezone(timezone.utc) + self._broker_utc_offset
+        to_date = datetime.now(timezone.utc) + self._broker_utc_offset
 
         try:
             deals = mt5.history_deals_get(from_date, to_date) or []
@@ -589,10 +689,16 @@ class TrendlineLiveAdapter:
             logger.warning(f"[TL] Failed to fetch history deals: {exc}")
             deals = []
 
+        # Some brokers (e.g. AtlasFunded-Server) zero out `magic` on deals,
+        # so magic alone can't be trusted to attribute deals back to this
+        # strategy — fall back to the locally recorded ticket numbers TL
+        # itself confirmed opening (see src/ticket_store.py).
+        own_tickets = load_tickets(strategy="TL")
+
         daily_pnl = 0.0
         daily_entries = 0
         for deal in deals:
-            if deal.magic != TL_MAGIC:
+            if deal.magic != TL_MAGIC and deal.position_id not in own_tickets:
                 continue
             if deal.type in (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL):
                 daily_pnl += deal.profit + deal.commission + deal.swap
@@ -652,8 +758,8 @@ class TrendlineLiveAdapter:
                 f"${self._drawdown_floor:.2f}. Halting all trading and flattening."
             )
             self._drawdown_halted = True
-            if self._open_ticket is not None:
-                self._time_exit(symbol)
+            for ticket in list(self._open):
+                self._time_exit(symbol, ticket)
             return False
 
         return True

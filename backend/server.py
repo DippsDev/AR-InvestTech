@@ -65,6 +65,12 @@ def stop_bot():
     return {"running": False}
 
 
+@app.post("/bot/restart")
+def restart_bot():
+    bridge._restart_bot()
+    return {"running": bridge._is_running()}
+
+
 # ── Live data ──────────────────────────────────────────────────────
 
 @app.get("/stats")

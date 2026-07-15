@@ -9,6 +9,8 @@ interface Props {
   connected: boolean;
   server: string;
   pingMs: number | null;
+  running: boolean;
+  onRestartBot: () => Promise<void>;
 }
 
 const DEFAULTS: S = {
@@ -44,11 +46,28 @@ function SectionHeader({ label, color }: { label: string; color: string }) {
   );
 }
 
-export default function Settings({ onSave, doLoad, connected, server, pingMs }: Props) {
+export default function Settings({ onSave, doLoad, connected, server, pingMs, running, onRestartBot }: Props) {
   const [form,   setForm]   = useState<S>(DEFAULTS);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [saveOk,    setSaveOk]    = useState(false);
+
+  const [restarting,   setRestarting]   = useState(false);
+  const [restartError, setRestartError] = useState("");
+  const [restartOk,    setRestartOk]    = useState(false);
+
+  const restart = async () => {
+    setRestarting(true);
+    setRestartError("");
+    setRestartOk(false);
+    try {
+      await onRestartBot();
+      setRestartOk(true);
+      setTimeout(() => setRestartOk(false), 2000);
+    } catch (err) {
+      setRestartError(err instanceof Error ? err.message : "Restart failed — check the Backend URL in Connection below.");
+    } finally { setRestarting(false); }
+  };
 
   const [backendUrl, setBackendUrl]   = useState(() => getConnection().baseUrl);
   const [apiToken,   setApiToken]     = useState(() => getConnection().token);
@@ -253,8 +272,29 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs }: 
         <SectionHeader label="Strategy Toggles" color="var(--dash-accent-purple)" />
         <div style={{ padding: "6px 16px" }}>
           {tog("aggressive", "Aggressive Mode",   "2–3 trades/day: lower filters + London session · restart bot to apply")}
-          {tog("off_hours",  "Off-Hours Trading", "Trade outside session windows · max 3 fills/day · closes 17:00 ET · restart bot to apply")}
+          {tog("off_hours",  "Off-Hours Trading", "Trade outside session windows · max 3 fills/day · closes 23:00–00:00 BWT · restart bot to apply")}
           {tog("news",       "Skip News Days",    "Pause all entries on NFP/FOMC/CPI/GDP release days · restart bot to apply", true)}
+        </div>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
+          padding: "12px 16px", borderTop: "1px solid var(--dash-border)",
+        }}>
+          <div style={{ fontSize: 11, color: "var(--dash-text-dim)" }}>
+            Save toggle changes above first, then restart to apply them — the bot only reads settings on startup.
+            {" "}Bot is currently <strong style={{ color: running ? "#22C55E" : "var(--dash-text-muted)" }}>{running ? "running" : "stopped"}</strong>.
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+            {restartOk && <span style={{ fontSize: 12, color: "#22C55E" }}>Restarted</span>}
+            {restartError && <span style={{ fontSize: 12, color: "#F87171", maxWidth: 200 }}>{restartError}</span>}
+            <button onClick={restart} disabled={restarting} style={{
+              background: "var(--dash-card-bg-2)", color: "var(--dash-text)", border: "1px solid var(--dash-border)",
+              borderRadius: 6, padding: "9px 18px", fontSize: 12, fontWeight: 700,
+              cursor: restarting ? "not-allowed" : "pointer", fontFamily: "inherit",
+              opacity: restarting ? 0.6 : 1, whiteSpace: "nowrap",
+            }}>
+              {restarting ? "Restarting…" : "Restart Bot"}
+            </button>
+          </div>
         </div>
       </div>
     </>

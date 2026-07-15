@@ -51,8 +51,9 @@ class SignalGenerator:
     bar close. Returns a Signal if a setup is complete, else None.
 
     Unlike silver_bullet's SignalGenerator there are no session windows —
-    EURUSD trades ~24/5 — so state is a single running support/resistance
-    line pair plus a one-trade-at-a-time gate, not a per-session dict.
+    US30 trades near-continuously — so state is a single running
+    support/resistance line pair plus a one-trade-at-a-time gate, not a
+    per-session dict.
     """
 
     def __init__(self, cfg: TrendlineConfig):
@@ -61,9 +62,9 @@ class SignalGenerator:
         self._resistance_line: Optional[TrendLine] = None
         self._trade_active: bool = False
 
-    def _log(self, msg: str) -> None:
+    def _log(self, msg: str, level: str = "info") -> None:
         from src.logger import logger
-        logger.info(msg)
+        getattr(logger, level)(msg)
 
     def on_bar(
         self,
@@ -105,13 +106,13 @@ class SignalGenerator:
         if self._support_line is not None and check_breach(
             self._support_line, bar_idx, float(closes[bar_idx]), cfg.breach_tolerance_points
         ):
-            self._log(f"[TL] Support trendline broken | bar={bar_idx} | {date_str}")
+            self._log(f"[TL] Support trendline broken | bar={bar_idx} | {date_str}", level="debug")
             self._support_line = None
 
         if self._resistance_line is not None and check_breach(
             self._resistance_line, bar_idx, float(closes[bar_idx]), cfg.breach_tolerance_points
         ):
-            self._log(f"[TL] Resistance trendline broken | bar={bar_idx} | {date_str}")
+            self._log(f"[TL] Resistance trendline broken | bar={bar_idx} | {date_str}", level="debug")
             self._resistance_line = None
 
         # --- Step 3: touch + reversal-candle confirmation -> signal ---
@@ -162,7 +163,8 @@ class SignalGenerator:
         if risk < cfg.min_risk_points:
             self._log(
                 f"[TL] Signal rejected | risk {risk:.5f} below minimum "
-                f"{cfg.min_risk_points:.5f} | bar={bar_idx} | {date_str}"
+                f"{cfg.min_risk_points:.5f} | bar={bar_idx} | {date_str}",
+                level="debug",
             )
             return None
 

@@ -69,8 +69,8 @@ class SilverBulletConfig:
     off_hours_min_risk_points: float = 3.0
     off_hours_target_mode: str = "rr"
     off_hours_rr: float = 2.5
-    off_hours_breakeven_r: float = 1.0
-    off_hours_trail_r: float = 0.5
+    off_hours_breakeven_r: float = 0.25
+    off_hours_trail_r: float = 0.1
     off_hours_early_exit_r: float = 0.5
     off_hours_deep_profit_r: float = 2.0
     off_hours_deep_trail_r: float = 0.2
@@ -102,11 +102,15 @@ class SilverBulletConfig:
 
     # Move stop to entry once price travels this many R in our favour.
     # Set to 0.0 to disable breakeven entirely.
-    breakeven_r: float = 0.5
+    # 0.25 chosen via grid search over data/us30_m5_current.csv (49 combos,
+    # session-only, aggressive-mode filters): best profit factor (2.03) and
+    # win rate (62.9%) in the whole grid — protecting gains early consistently
+    # beat waiting, since these tight-filter setups are noisy/choppy.
+    breakeven_r: float = 0.25
     # After breakeven triggers, trail stop this many R behind the best price.
     # e.g. 1.0 → stop stays 1R below the highest high seen (long).
-    # Set to 0.0 to disable trailing entirely.
-    trail_r: float = 0.25
+    # Set to 0.0 to disable trailing entirely. 0.1 likewise won the same grid search.
+    trail_r: float = 0.1
     # Early exit: if price moves this many R against us BEFORE breakeven triggers,
     # cut the trade immediately rather than waiting for the structural stop.
     # 0.0 = disabled.

@@ -95,9 +95,9 @@ class SignalGenerator:
         # Key: (date_str, window_id) → _SessionState
         self._sessions: dict[tuple, _SessionState] = {}
 
-    def _log(self, msg: str) -> None:
+    def _log(self, msg: str, level: str = "info") -> None:
         from src.logger import logger
-        logger.info(msg)
+        getattr(logger, level)(msg)
 
     def on_bar(
         self,
@@ -138,7 +138,7 @@ class SignalGenerator:
                 sess.bias = "bullish"
                 sess.sweep_level = level
                 sess.sweep_bar = bar_idx
-                self._log(f"[SB] Sweep BULLISH | swept low={level:.2f} | bar={bar_idx} | {date_str} w{window_id}")
+                self._log(f"[SB] Sweep BULLISH | swept low={level:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
                 if cfg.sweep_entry_mode:
                     return self._sweep_signal("long", closes[bar_idx], level, highs, lows, bar_idx, cfg, sess, window_id)
             else:
@@ -149,7 +149,7 @@ class SignalGenerator:
                     sess.bias = "bearish"
                     sess.sweep_level = level
                     sess.sweep_bar = bar_idx
-                    self._log(f"[SB] Sweep BEARISH | swept high={level:.2f} | bar={bar_idx} | {date_str} w{window_id}")
+                    self._log(f"[SB] Sweep BEARISH | swept high={level:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
                     if cfg.sweep_entry_mode:
                         return self._sweep_signal("short", closes[bar_idx], level, highs, lows, bar_idx, cfg, sess, window_id)
 
@@ -171,7 +171,7 @@ class SignalGenerator:
         if fvg is None:
             return None
 
-        self._log(f"[SB] FVG {sess.bias.upper()} | zone={fvg[0]:.2f}–{fvg[1]:.2f} | bar={bar_idx} | {date_str} w{window_id}")
+        self._log(f"[SB] FVG {sess.bias.upper()} | zone={fvg[0]:.2f}–{fvg[1]:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
 
         # --- Step 3: build the full signal ---
         bottom, top = fvg
@@ -190,18 +190,18 @@ class SignalGenerator:
         # prev_day_bias  0 = first day or flat candle → no filter applied.
         if cfg.use_daily_bias and prev_day_bias != 0:
             if direction == "long"  and prev_day_bias == -1:
-                self._log(f"[SB] Signal rejected | daily bias mismatch (bearish yesterday) | bar={bar_idx} | {date_str} w{window_id}")
+                self._log(f"[SB] Signal rejected | daily bias mismatch (bearish yesterday) | bar={bar_idx} | {date_str} w{window_id}", level="debug")
                 return None
             if direction == "short" and prev_day_bias == 1:
-                self._log(f"[SB] Signal rejected | daily bias mismatch (bullish yesterday) | bar={bar_idx} | {date_str} w{window_id}")
+                self._log(f"[SB] Signal rejected | daily bias mismatch (bullish yesterday) | bar={bar_idx} | {date_str} w{window_id}", level="debug")
                 return None
 
         # Sanity: entry must be on the correct side of the stop
         if direction == "long" and entry <= stop:
-            self._log(f"[SB] Signal rejected | entry {entry:.2f} not above stop {stop:.2f} | bar={bar_idx} | {date_str} w{window_id}")
+            self._log(f"[SB] Signal rejected | entry {entry:.2f} not above stop {stop:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
             return None
         if direction == "short" and entry >= stop:
-            self._log(f"[SB] Signal rejected | entry {entry:.2f} not below stop {stop:.2f} | bar={bar_idx} | {date_str} w{window_id}")
+            self._log(f"[SB] Signal rejected | entry {entry:.2f} not below stop {stop:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
             return None
 
         # Minimum risk guard — skips degenerate setups where FVG nearly touches stop
@@ -209,7 +209,8 @@ class SignalGenerator:
         if risk_points < cfg.min_risk_points:
             self._log(
                 f"[SB] Signal rejected | risk {risk_points:.2f}pts below minimum "
-                f"{cfg.min_risk_points:.2f}pts | bar={bar_idx} | {date_str} w{window_id}"
+                f"{cfg.min_risk_points:.2f}pts | bar={bar_idx} | {date_str} w{window_id}",
+                level="debug",
             )
             return None
 
@@ -230,6 +231,11 @@ class SignalGenerator:
         if cfg.one_trade_per_window:
             sess.signal_emitted = True
 
+        self._log(
+            f"[SB] Signal {direction.upper()} | entry={entry:.2f} stop={stop:.2f} "
+            f"target={target:.2f} | sweep={sess.sweep_level:.2f} "
+            f"fvg={fvg[0]:.2f}-{fvg[1]:.2f} | bar={bar_idx} | {date_str} w{window_id}"
+        )
         return signal
 
     def _sweep_signal(
@@ -251,17 +257,18 @@ class SignalGenerator:
             stop = sweep_level + cfg.stop_buffer_points
 
         if direction == "long" and entry <= stop:
-            self._log(f"[SB] Sweep-entry rejected | entry {entry:.2f} not above stop {stop:.2f} | bar={bar_idx} w{window_id}")
+            self._log(f"[SB] Sweep-entry rejected | entry {entry:.2f} not above stop {stop:.2f} | bar={bar_idx} w{window_id}", level="debug")
             return None
         if direction == "short" and entry >= stop:
-            self._log(f"[SB] Sweep-entry rejected | entry {entry:.2f} not below stop {stop:.2f} | bar={bar_idx} w{window_id}")
+            self._log(f"[SB] Sweep-entry rejected | entry {entry:.2f} not below stop {stop:.2f} | bar={bar_idx} w{window_id}", level="debug")
             return None
 
         risk = abs(entry - stop)
         if risk < cfg.min_risk_points:
             self._log(
                 f"[SB] Sweep-entry rejected | risk {risk:.2f}pts below minimum "
-                f"{cfg.min_risk_points:.2f}pts | bar={bar_idx} w{window_id}"
+                f"{cfg.min_risk_points:.2f}pts | bar={bar_idx} w{window_id}",
+                level="debug",
             )
             return None
 
@@ -270,6 +277,11 @@ class SignalGenerator:
         if cfg.one_trade_per_window:
             sess.signal_emitted = True
 
+        self._log(
+            f"[SB] Signal {direction.upper()} | entry={entry:.2f} stop={stop:.2f} "
+            f"target={target:.2f} | sweep={sweep_level:.2f} (sweep-entry) | "
+            f"bar={bar_idx} w{window_id}"
+        )
         return Signal(
             direction=direction,
             entry_price=entry,

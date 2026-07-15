@@ -24,6 +24,8 @@ backend/backtests/*.json
 backend/backtests/*.csv
 backend/backtests/*.png
 backend/backtests/*.log
+backend/bot_tickets.json
+backend/news_bias_history.json
 
 # Next.js
 frontend/.next/

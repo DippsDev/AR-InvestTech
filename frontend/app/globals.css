@@ -251,20 +251,6 @@ html, body {
   }
 }
 
-@keyframes infinite-marquee {
-  0% { transform: translateX(0); }
-  100% { transform: translateX(-50%); }
-}
-
-.infinite-marquee-track {
-  animation-name: infinite-marquee;
-  animation-timing-function: linear;
-  animation-iteration-count: infinite;
-}
-.infinite-marquee-track:hover {
-  animation-play-state: paused;
-}
-
 @keyframes dash-fade-in {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: none; }

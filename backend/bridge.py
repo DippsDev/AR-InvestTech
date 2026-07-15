@@ -33,6 +33,13 @@ class _BotLogHandler(logging.Handler):
     """Intercepts the bot logger and routes decision-worthy entries into the log buffer."""
 
     TAG_MAP = {
+        # Analyst entries first: several share substrings ("No tick data",
+        # "failed") with generic Scanner/Risk rules below, and the first
+        # matching keyword wins.
+        "Analyst] Bias":            ("[BIAS]",  "sig",  "Analyst"),
+        "Analyst] Graded":          ("[GRADE]", "inf",  "Analyst"),
+        "Analyst] No tick data":    ("[INFO]",  "inf",  "Analyst"),
+        "Analyst] Daily bias check failed": ("[ERR]", "warn", "Analyst"),
         "CIRCUIT BREAKER":          ("[HALT]",  "warn", "Boss"),
         "Daily loss limit reached": ("[RISK]",  "warn", "Risk"),
         "Daily trade cap reached":  ("[RISK]",  "warn", "Risk"),
@@ -49,6 +56,7 @@ class _BotLogHandler(logging.Handler):
         "Time exit":                ("[EXIT]",  "inf",  "Trader"),
         "removed without fill":     ("[INFO]",  "inf",  "Trader"),
         "cancelled (window ended)": ("[INFO]",  "inf",  "Trader"),
+        "No setup on":              ("[SCAN]",  "inf",  "Scanner"),
         "Signal stale":             ("[INFO]",  "inf",  "Scanner"),
         "Market closed for":        ("[INFO]",  "inf",  "Scanner"),
         "Bar fetch failed":         ("[ERR]",   "warn", "Scanner"),
@@ -251,6 +259,28 @@ class BotBridge:
     def _is_running(self) -> bool:
         return self._bot_running and bool(self._bot_thread and self._bot_thread.is_alive())
 
+    def _restart_bot(self) -> None:
+        """Stop the bot (waiting for its loop to actually exit, not just
+        flipping the flag) and start a fresh instance so it picks up
+        whatever was just saved to .env — settings like Aggressive Mode /
+        Off-Hours / Skip News Days are only read once, in SilverBulletBot
+        .__init__, so toggling them has no effect on an already-running
+        bot until it's restarted. Joining the old thread here (unlike
+        _stop_bot, which leaves it running in the background) avoids two
+        overlapping bot loops / MT5 connections for the duration of a
+        naive stop-then-start."""
+        if self._is_running():
+            if self._bot:
+                self._bot.running = False
+            if self._bot_thread:
+                self._bot_thread.join(timeout=15)
+            self._bot_running = False
+            if self._log_handler:
+                logging.getLogger("silver_bullet_bot").removeHandler(self._log_handler)
+                self._log_handler = None
+        self._add_log("[RESTART]", "sig", "Bot restarting to apply updated settings...", speaker="Boss")
+        self._start_bot()
+
     # ── Live stats ────────────────────────────────────────────────────────────
 
     def get_stats(self) -> dict:
@@ -301,7 +331,19 @@ class BotBridge:
                 ]
             if _cfg.SB_OFF_HOURS:
                 cfg.off_hours_trading = True
-            ny_h = datetime.now(ZoneInfo("America/New_York")).hour
+            NY_TZ = ZoneInfo("America/New_York")
+            BW_TZ = ZoneInfo("Africa/Gaborone")
+            now_ny = datetime.now(NY_TZ)
+            ny_h = now_ny.hour
+
+            def _ny_label_to_botswana(hh_mm: str) -> str:
+                # Windows are authored as NY-local "HH:MM" (see
+                # silver_bullet/config.py). Convert via a real tz-aware
+                # datetime rather than a fixed offset so the US/Botswana gap
+                # (6h during EDT, 7h during EST) is always correct.
+                h, m = map(int, hh_mm.split(":"))
+                ny_dt = now_ny.replace(hour=h, minute=m, second=0, microsecond=0)
+                return ny_dt.astimezone(BW_TZ).strftime("%H:%M")
 
             session = "Off-Hours"
             for start_s, end_s in cfg.windows:
@@ -310,14 +352,17 @@ class BotBridge:
                 start_h = sh + sm / 60.0
                 end_h = eh + em / 60.0
                 if start_h <= ny_h < end_h:
-                    session = f"NY {start_s}–{end_s} (Active)"
+                    bw_start = _ny_label_to_botswana(start_s)
+                    bw_end = _ny_label_to_botswana(end_s)
+                    session = f"{bw_start}–{bw_end} BWT (Active)"
                     break
             if session == "Off-Hours" and _cfg.SB_OFF_HOURS and ny_h < 17:
-                session = "Off-Hours (Active)"
+                bw_close = _ny_label_to_botswana(cfg.off_hours_close_time)
+                session = f"Off-Hours (Active until {bw_close} BWT)"
             # Surface news pause in the dashboard so it is obvious why the bot is idle.
             if _cfg.SB_NEWS:
                 from silver_bullet.news_calendar import is_news_day
-                if is_news_day(datetime.now(ZoneInfo("America/New_York")).date()):
+                if is_news_day(now_ny.date()):
                     session += " · News pause"
         except Exception:
             session = "--"
@@ -505,7 +550,8 @@ class BotBridge:
     # ── Economic calendar ───────────────────────────────────────────────────────
 
     def get_calendar(self, count: int = 8) -> list:
-        from silver_bullet.news_calendar import HIGH_IMPACT_DATES
+        import config
+        from silver_bullet.news_calendar import HIGH_IMPACT_DATES, event_label
 
         today = datetime.now().date()
         upcoming = sorted(
@@ -517,14 +563,19 @@ class BotBridge:
         for d in upcoming:
             delta = (d - today).days
             detail = "today · high impact" if delta == 0 else f"in {delta} day{'s' if delta != 1 else ''} · high impact"
+            # Only claim the bot will pause entries when the "Skip News Days"
+            # setting (SB_NEWS) is actually on — otherwise this text lies to
+            # the user about live bot behavior.
+            if config.SB_NEWS:
+                detail += "\nBot pauses new entries on this date."
             rows.append({
                 "day":     d.day,
                 "weekday": d.strftime("%b").upper(),
                 "month":   d.strftime("%b").upper(),
-                "title":   "High-Impact US Data",
+                "title":   event_label(d),
                 "tag":     "NEWS DAY",
                 "tagColor": "#EF4444",
-                "detail":  f"{detail}\nBot pauses new entries on this date (NFP/FOMC/CPI/GDP release).",
+                "detail":  detail,
             })
         return rows
 

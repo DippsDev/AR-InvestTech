@@ -19,9 +19,15 @@ interface Props {
 export default function InfiniteMarquee({ items, speed = 40, gap = 24, className, style }: Props) {
   const outerRef = useRef<HTMLDivElement>(null);
   const sampleRef = useRef<HTMLDivElement>(null);
+  const loopRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const [repeat, setRepeat] = useState(1);
-  const [duration, setDuration] = useState(30);
+  const loopWidthRef = useRef(0);
+  const posRef = useRef(0);
 
+  // Figure out how many copies of `items` are needed so one loop (the
+  // content between wrap points) always fills or overflows the visible
+  // track — otherwise the scroll runs out of content before the loop point.
   useEffect(() => {
     const recompute = () => {
       const outer = outerRef.current;
@@ -30,19 +36,57 @@ export default function InfiniteMarquee({ items, speed = 40, gap = 24, className
       const containerWidth = outer.offsetWidth;
       const baseWidth = sample.scrollWidth;
       if (baseWidth === 0) return;
-      const copies = Math.max(1, Math.ceil(containerWidth / baseWidth) + 1);
-      setRepeat(copies);
-      setDuration((copies * baseWidth) / speed);
+      setRepeat(Math.max(1, Math.ceil(containerWidth / baseWidth) + 1));
     };
     recompute();
     const ro = new ResizeObserver(recompute);
     if (outerRef.current) ro.observe(outerRef.current);
     if (sampleRef.current) ro.observe(sampleRef.current);
     return () => ro.disconnect();
-  }, [items, speed]);
+  }, [items]);
 
-  const track = Array.from({ length: repeat }, () => items).flat();
-  const full = [...track, ...track];
+  // Track the rendered width of one loop directly (not estimated), so the
+  // rAF driver below always wraps at the true content boundary.
+  useEffect(() => {
+    const loop = loopRef.current;
+    if (!loop) return;
+    const ro = new ResizeObserver(([entry]) => {
+      loopWidthRef.current = entry.contentRect.width;
+    });
+    ro.observe(loop);
+    loopWidthRef.current = loop.offsetWidth;
+    return () => ro.disconnect();
+  });
+
+  // Drive the scroll with requestAnimationFrame instead of a CSS animation
+  // whose duration is recomputed from measured widths: changing
+  // animation-duration on an already-running CSS animation makes browsers
+  // jump/restart it mid-loop — which is exactly the stutter this caused,
+  // firing every time the marquee's content changed width by even a pixel
+  // (e.g. a ticker value re-rendering on every price/equity poll). Position
+  // accumulates in a ref and wraps modulo the loop's current width, so
+  // content or size changes are picked up smoothly next frame instead of
+  // resetting progress. This effect itself never re-runs on content
+  // changes — only if `speed` changes — so the loop is never torn down.
+  useEffect(() => {
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min(0.1, (now - last) / 1000);
+      last = now;
+      const track = trackRef.current;
+      const loopWidth = loopWidthRef.current;
+      if (track && loopWidth > 0) {
+        posRef.current = (posRef.current + speed * dt) % loopWidth;
+        track.style.transform = `translateX(-${posRef.current}px)`;
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [speed]);
+
+  const loop = Array.from({ length: repeat }, () => items).flat();
 
   return (
     <div ref={outerRef} className={className} style={{ overflow: "hidden", minWidth: 0, ...style }}>
@@ -54,15 +98,21 @@ export default function InfiniteMarquee({ items, speed = 40, gap = 24, className
       >
         {items}
       </div>
-      <div
-        className="infinite-marquee-track"
-        style={{ display: "flex", gap, whiteSpace: "nowrap", animationDuration: `${duration}s` }}
-      >
-        {full.map((node, i) => (
-          <div key={i} style={{ display: "flex", flexShrink: 0 }}>
-            {node}
-          </div>
-        ))}
+      <div ref={trackRef} style={{ display: "flex", gap, whiteSpace: "nowrap", willChange: "transform" }}>
+        <div ref={loopRef} style={{ display: "flex", gap, flexShrink: 0 }}>
+          {loop.map((node, i) => (
+            <div key={`a-${i}`} style={{ display: "flex", flexShrink: 0 }}>
+              {node}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap, flexShrink: 0 }}>
+          {loop.map((node, i) => (
+            <div key={`b-${i}`} style={{ display: "flex", flexShrink: 0 }}>
+              {node}
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

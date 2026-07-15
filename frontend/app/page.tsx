@@ -86,6 +86,11 @@ export default function App() {
     } catch {}
   }, []);
 
+  const handleRestartBot = useCallback(async () => {
+    const r = await apiClient.restartBot();
+    setRunning(r.running);
+  }, []);
+
   const handleDisconnect = useCallback(() => {
     clearConnection();
     setConnected(false);
@@ -131,6 +136,8 @@ export default function App() {
             connected={connected}
             server={server}
             pingMs={pingMs}
+            running={running}
+            onRestartBot={handleRestartBot}
           />
         </div>
       </div>

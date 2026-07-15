@@ -2,7 +2,7 @@
 
 Unlike SilverBulletConfig's defaults (tuned against 3 years of US30 M5
 history), these numbers are reasoned starting points, not backtested —
-there is no historical EURUSD H1 run through this logic yet. Validate on
+there is no historical US30 H1 run through this logic yet. Validate on
 a demo account (or a future trendline/backtest.py harness) before relying
 on them.
 """
@@ -14,8 +14,11 @@ from dataclasses import dataclass
 @dataclass
 class TrendlineConfig:
     # ── Instrument ────────────────────────────────────────────────────────────
-    symbol: str = "EURUSD"
-    bars_lookback: int = 300   # H1 bars fetched per cycle (~12.5 days of 24/5 data)
+    # Informational only — bot.py always overrides the live adapter's actual
+    # symbol with whatever US30 ticker Silver Bullet resolved on this broker,
+    # so both strategies trade the identical instrument.
+    symbol: str = "US30"
+    bars_lookback: int = 300   # H1 bars fetched per cycle (~12.5 days of near-continuous data)
 
     # ── Swing detection ───────────────────────────────────────────────────────
     # Bars required on each side of a pivot to confirm it as a swing point.
@@ -66,9 +69,12 @@ class TrendlineConfig:
     trail_r: float = 0.5
 
     # ── Discipline ────────────────────────────────────────────────────────────
-    # No session windows (EURUSD trades ~24/5) — at most one open/pending
-    # position at a time; no add-on/pyramiding in v1.
-    one_trade_at_a_time: bool = True
+    # No session windows (US30 trades near-continuously like Silver Bullet's
+    # own off-hours mode). Concurrent positions are allowed by default — the
+    # live adapter tracks each open position independently by ticket, and
+    # TL_MAX_TRADES_PER_DAY is the only throttle on how many entries happen
+    # in a day. Set True to go back to a single open/pending position at a time.
+    one_trade_at_a_time: bool = False
     # Skip new entries on high-impact US macro news days (reuses
     # silver_bullet.news_calendar.is_news_day — that calendar is generic,
     # not Silver-Bullet-specific).

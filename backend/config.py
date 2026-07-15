@@ -29,6 +29,13 @@ MT5_PATH     = os.getenv("MT5_PATH", "")
 SUPABASE_URL          = os.getenv("SUPABASE_URL", "").strip()
 SUPABASE_SERVICE_KEY  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
 
+# News Analyst — shadow-mode daily directional bias (see news_analyst.py).
+# Purely observational: logs a bias call once per NY trading day for later
+# evaluation. Never gates or sizes real trades. Disabled entirely (no API
+# call attempted) if no key is configured.
+ANTHROPIC_API_KEY   = os.getenv("ANTHROPIC_API_KEY", "").strip()
+NEWS_ANALYST_ENABLED = os.getenv("NEWS_ANALYST_ENABLED", "true").lower() == "true"
+
 # Silver Bullet — US30 (Dow Jones), active NY 10:00–12:00
 # Set SB_SYMBOL in .env if your broker uses a different name (e.g. US30Cash, #US30, DJ30)
 SB_SYMBOL = os.getenv("SB_SYMBOL", "US30")
@@ -99,11 +106,14 @@ SB_MARKET_ORDER = os.getenv("SB_MARKET_ORDER", "false").lower() == "true"
 # Sweep entry mode: enter at market on sweep detection alone, no FVG required (test/demo only)
 SB_SWEEP_ENTRY  = os.getenv("SB_SWEEP_ENTRY",  "false").lower() == "true"
 
-# Trendline strategy — EURUSD, H1 candles, aggressive market-order entries on
-# trendline touch + reversal candlestick confirmation. Runs alongside Silver
-# Bullet in the same bot process; fully independent (own magic number, own
-# risk config). Off by default so existing installs are unaffected.
-TL_SYMBOL  = os.getenv("TL_SYMBOL", "EURUSD")
+# Trendline strategy — same instrument as Silver Bullet (US30), H1 candles,
+# aggressive market-order entries on trendline touch + reversal candlestick
+# confirmation. Runs alongside Silver Bullet in the same bot process on the
+# same symbol; fully independent (own magic number, own risk config). Off by
+# default so existing installs are unaffected. bot.py always overrides this
+# with whatever US30 symbol Silver Bullet resolved, so the two strategies can
+# never end up trading different instruments.
+TL_SYMBOL  = os.getenv("TL_SYMBOL", "US30")
 TL_ENABLED = os.getenv("TL_ENABLED", "false").lower() == "true"
 
 try:
@@ -142,6 +152,17 @@ except ValueError:
     TL_MAX_TRADES_PER_DAY = 3
 
 TL_NEWS = os.getenv("TL_NEWS", "true").lower() == "true"
+
+# Adaptive daily-trade floor: if by this NY time the combined SB+TL trade
+# count today is still below DAILY_TRADE_FLOOR, both adapters relax their
+# entry filters (smaller min risk / wider tolerances) for the rest of the
+# day to raise the odds of clearing it. This never fabricates a trade —
+# it only widens which real, rule-based setups qualify.
+try:
+    DAILY_TRADE_FLOOR = int(os.getenv("DAILY_TRADE_FLOOR", "3"))
+except ValueError:
+    DAILY_TRADE_FLOOR = 3
+DAILY_TRADE_FLOOR_TIME_ET = os.getenv("DAILY_TRADE_FLOOR_TIME_ET", "14:00")
 
 # Logging
 LOG_FILE  = str(paths.app_data_dir() / "logs" / "trades.log")

@@ -44,9 +44,14 @@ export const PERSONAS: Record<string, Persona> = {
     skin: "#F5D6B4", hair: "#C9A227",
     idleNote: "Warming up.",
   },
+  Analyst: {
+    name: "Analyst", color: "#14B8A6", role: "Daily news bias (shadow mode)",
+    skin: "#E0AC69", hair: "#3B2412",
+    idleNote: "No bias call yet today.",
+  },
 };
 
-export const PERSONA_ORDER = ["Boss", "Trader", "Risk", "News Guard", "Grader", "Scanner"];
+export const PERSONA_ORDER = ["Boss", "Trader", "Risk", "News Guard", "Grader", "Scanner", "Analyst"];
 
 export function personaFor(speaker: string): Persona {
   return PERSONAS[speaker] ?? {

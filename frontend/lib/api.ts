@@ -148,6 +148,11 @@ export const apiClient = {
     return r.json();
   },
 
+  async restartBot(): Promise<{ running: boolean }> {
+    const r = await req("/bot/restart", { method: "POST" });
+    return r.json();
+  },
+
   async getStats(): Promise<Stats> {
     const r = await req("/stats");
     return r.json();
