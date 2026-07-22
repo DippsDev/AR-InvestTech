@@ -1,5 +1,5 @@
 "use client";
-import type { Stats } from "@/lib/api";
+import type { OpenPosition, Stats } from "@/lib/api";
 
 interface Props {
   stats?: Stats | null;
@@ -14,9 +14,51 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function PositionBlock({ trade }: { trade: OpenPosition }) {
+  const isUp = trade.float_pnl.startsWith("+");
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+        paddingBottom: 10,
+        borderBottom: "1px solid var(--dash-border)",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+          <span style={{ fontSize: 18, fontWeight: 800, color: "var(--dash-text)" }}>{trade.symbol}</span>
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              color: trade.side === "BUY" ? "#111827" : "#F3F4F6",
+              background: trade.side === "BUY" ? "#22C55E" : "#EF4444",
+              padding: "2px 6px",
+              borderRadius: 4,
+            }}
+          >
+            {trade.side}
+          </span>
+        </div>
+        <span style={{ fontSize: 13, fontWeight: 700, color: isUp ? "#22C55E" : "#EF4444" }}>
+          {trade.float_pnl}
+        </span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <Row label="Entry" value={trade.entry} />
+        <Row label="Stop Loss" value={trade.sl} />
+        <Row label="Take Profit" value={trade.tp} />
+        <Row label="Lots" value={trade.lots} />
+        <Row label="Breakeven" value={trade.breakeven ? "Yes" : "No"} />
+      </div>
+    </div>
+  );
+}
+
 export default function OpenTradeCard({ stats }: Props) {
-  const trade = stats?.open_trade;
-  const isUp = trade ? trade.float_pnl.startsWith("+") : true;
+  const trades = stats?.open_positions ?? [];
 
   return (
     <div
@@ -29,47 +71,29 @@ export default function OpenTradeCard({ stats }: Props) {
         display: "flex",
         flexDirection: "column",
         gap: 10,
+        overflowY: "auto",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ fontSize: 10, fontWeight: 700, color: "var(--dash-text-muted)", letterSpacing: ".08em" }}>
-          OPEN TRADE
+          OPEN TRADES
         </span>
-        {trade && (
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 700,
-              color: trade.side === "BUY" ? "#111827" : "#F3F4F6",
-              background: trade.side === "BUY" ? "#22C55E" : "#EF4444",
-              padding: "2px 8px",
-              borderRadius: 4,
-            }}
-          >
-            {trade.side}
+        {trades.length > 0 && (
+          <span style={{ fontSize: 10, fontWeight: 700, color: "var(--dash-text-muted)" }}>
+            {trades.length}
           </span>
         )}
       </div>
 
-      {trade ? (
-        <>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-            <span style={{ fontSize: 22, fontWeight: 800, color: "var(--dash-text)" }}>{trade.symbol}</span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: isUp ? "#22C55E" : "#EF4444" }}>
-              {trade.float_pnl}
-            </span>
-          </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <Row label="Entry" value={trade.entry} />
-            <Row label="Stop Loss" value={trade.sl} />
-            <Row label="Take Profit" value={trade.tp} />
-            <Row label="Lots" value={trade.lots} />
-            <Row label="Breakeven" value={trade.breakeven ? "Yes" : "No"} />
-          </div>
-        </>
+      {trades.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {trades.map(trade => (
+            <PositionBlock key={trade.ticket} trade={trade} />
+          ))}
+        </div>
       ) : (
         <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 80 }}>
-          <span style={{ fontSize: 12, color: "var(--dash-text-dim)" }}>No open position</span>
+          <span style={{ fontSize: 12, color: "var(--dash-text-dim)" }}>No open positions</span>
         </div>
       )}
     </div>

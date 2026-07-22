@@ -66,9 +66,14 @@ export default function Dashboard(props: Props) {
       badge: { text: stats?.running ? "LIVE" : "PAUSED", color: stats?.running ? "#22C55E" : "#6B7280" },
     },
     Trader: {
-      badge: stats?.open_trade
-        ? { text: `${stats.open_trade.side} OPEN`, color: stats.open_trade.side === "BUY" ? "#22C55E" : "#EF4444" }
-        : { text: "NO OPEN TRADE", color: "#6B7280" },
+      badge: (() => {
+        const open = stats?.open_positions ?? [];
+        if (open.length === 0) return { text: "NO OPEN TRADES", color: "#6B7280" };
+        if (open.length === 1) {
+          return { text: `${open[0].side} OPEN`, color: open[0].side === "BUY" ? "#22C55E" : "#EF4444" };
+        }
+        return { text: `${open.length} OPEN`, color: "#3B82F6" };
+      })(),
     },
     Risk: {
       badge: {

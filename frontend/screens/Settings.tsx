@@ -14,9 +14,10 @@ interface Props {
 }
 
 const DEFAULTS: S = {
-  login: "", server: "", symbol: "US30", risk_pct: "1.0",
+  login: "", server: "", risk_pct: "1.0",
   daily_loss_limit_usd: "3.0", max_trades_per_day: "2", max_drawdown_pct: "50.0",
   aggressive: false, off_hours: false, news: true, password: "",
+  sb_symbols: [], tl_symbols: [],
 };
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -242,7 +243,6 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
           <div className="grid-mt5">
             {fld("login",    "Account Login", "e.g. 295971388")}
             {fld("server",   "Server",        "e.g. Exness-MT5Real27")}
-            {fld("symbol",   "Symbol",        "e.g. US30m")}
             {fld("password", "Password",      "leave blank to keep current", "password")}
           </div>
           <div style={{ gridColumn: "span 2", display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginTop: 12 }}>
@@ -252,6 +252,25 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
                 ? (pingMs != null ? `Connected · ${server || "MT5"} · ping ${pingMs}ms` : `Connected${server ? ` · ${server}` : ""}`)
                 : "Not connected"}
             </span>
+          </div>
+          {/* Read-only: trading symbols are chosen by backtested profit
+              factor in multi_symbol_targets.py, not user-editable here. */}
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: "1px solid var(--dash-border)" }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "var(--dash-text-muted)", marginBottom: 8 }}>
+              Active Trading Symbols
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ fontSize: 12, color: "var(--dash-text)" }}>
+                <span style={{ fontWeight: 700, color: "var(--dash-accent-blue)" }}>Silver Bullet</span>
+                {"  "}
+                {form.sb_symbols && form.sb_symbols.length > 0 ? form.sb_symbols.join(", ") : "—"}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--dash-text)" }}>
+                <span style={{ fontWeight: 700, color: "var(--dash-accent-purple)" }}>Trendline</span>
+                {"  "}
+                {form.tl_symbols && form.tl_symbols.length > 0 ? form.tl_symbols.join(", ") : "—"}
+              </div>
+            </div>
           </div>
         </div>
       </div>

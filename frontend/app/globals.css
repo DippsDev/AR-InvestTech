@@ -315,6 +315,15 @@ html, body {
        engine. This tells Safari to refuse that horizontal overscroll/bounce
        at the document edge outright instead of trusting the clip alone. */
     overscroll-behavior-x: none;
+    /* overscroll-behavior only controls bounce/chaining once a scroll
+       gesture has already started — touch-action controls whether the
+       browser recognizes a horizontal drag as a scroll gesture on this
+       axis AT ALL. Without it, a touch (or a touch-emulated drag, e.g.
+       Chrome DevTools' device toolbar) can still register a small
+       horizontal pan even when there is zero real overflow to scroll to,
+       because the browser doesn't know yet that the gesture won't go
+       anywhere until after it's already started tracking it. */
+    touch-action: pan-y;
   }
   .full-viewport {
     height: auto !important;
@@ -324,6 +333,7 @@ html, body {
     overflow-x: hidden;
     max-width: 100vw;
     overscroll-behavior-x: none;
+    touch-action: pan-y;
   }
   /* Belt-and-suspenders on top of the overflow-x:hidden chain below: an
      explicit hard cap so no amount of flex/grid stretch math can ever
@@ -378,6 +388,7 @@ html, body {
        Net effect: touch scrolling anywhere over this box does nothing.
        Force scroll-chaining back on so the gesture passes straight through. */
     overscroll-behavior-y: auto !important;
+    touch-action: pan-y;
   }
   .dash-scroll-area > div {
     min-width: 0;
@@ -387,15 +398,21 @@ html, body {
   .dash-card {
     min-width: 0;
   }
-  /* max-height (not height) so the panel shrinks to fit a short log instead
-     of always reserving the full 420px — this only works because BotLog is
-     wired up with flex:1/minHeight:0 rather than height:100%; a percentage
-     height doesn't resolve against an auto-height ancestor no matter what
-     max-height says, but the flex algorithm handles a max-height-clamped
-     flex container correctly regardless. */
+  /* max-height (not height) caps how tall the panel gets when it grows to
+     fill leftover space (flex-grow below) — this only works because BotLog
+     is wired up with flex:1/minHeight:0 rather than height:100%; a
+     percentage height doesn't resolve against an auto-height ancestor no
+     matter what max-height says, but the flex algorithm handles a
+     max-height-clamped flex container correctly regardless. flex-grow:1
+     lets this panel absorb any space left over below it in .dash-body
+     (e.g. when the rest of the page's real content is shorter than the
+     viewport) instead of leaving it as bare background below the card —
+     BotLog's own internal list still scrolls/centers within whatever
+     height that ends up being. */
   .dash-chat-col {
     width: 100% !important;
     flex-shrink: 1 !important;
+    flex-grow: 1 !important;
     max-height: 420px !important;
     padding: 0 14px 14px !important;
   }

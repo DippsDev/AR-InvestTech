@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "AR-InvestTech",
-  description: "US30 Scalping System",
+  description: "Multi-Symbol Scalping System",
 };
 
 export const viewport: Viewport = {

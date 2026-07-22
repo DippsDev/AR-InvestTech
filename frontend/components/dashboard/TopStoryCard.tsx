@@ -17,10 +17,12 @@ export default function TopStoryCard({ stats }: Props) {
     return () => clearInterval(timer);
   }, []);
 
+  const uniqueSymbols = new Set((stats?.active_symbols ?? []).map(s => s.symbol));
+
   const headline = stats?.market_open === false
     ? "Markets are closed — bot on standby until the next session"
     : stats?.market_open === true
-    ? `${stats.symbol || "US30"} live — bot scanning for Silver Bullet setups`
+    ? `Live — Silver Bullet + Trendline scanning ${uniqueSymbols.size || ""} symbols for setups`
     : topStory.headline;
 
   const sub = stats?.session
@@ -56,10 +58,10 @@ export default function TopStoryCard({ stats }: Props) {
           }}
         >
           <div style={{ fontSize: 10, color: "var(--dash-text-muted)", fontWeight: 600, letterSpacing: ".04em" }}>
-            {stats?.symbol || "US30"}
+            SYMBOLS
           </div>
           <div style={{ fontSize: 16, fontWeight: 700, color: "var(--dash-text)", marginTop: 2 }}>
-            {stats?.price ? stats.price : "--"}
+            {uniqueSymbols.size || "--"}
           </div>
         </div>
         <div

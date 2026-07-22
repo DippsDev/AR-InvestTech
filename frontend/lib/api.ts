@@ -25,6 +25,25 @@ async function req(path: string, init?: RequestInit): Promise<Response> {
   return r;
 }
 
+export interface OpenPosition {
+  ticket: number;
+  symbol: string;
+  side: "BUY" | "SELL";
+  entry: string;
+  sl: string;
+  tp: string;
+  lots: string;
+  float_pnl: string;
+  breakeven: boolean;
+}
+
+export interface ActiveSymbol {
+  symbol: string;
+  strategy: "SB" | "TL";
+  price: string | null;
+  market_open: boolean;
+}
+
 export interface Stats {
   running: boolean;
   connected: boolean;
@@ -35,23 +54,18 @@ export interface Stats {
   open_trades: string;
   daily_cap_used: string;
   next_refresh: string;
-  open_trade?: {
-    symbol: string;
-    side: "BUY" | "SELL";
-    entry: string;
-    sl: string;
-    tp: string;
-    lots: string;
-    float_pnl: string;
-    breakeven: boolean;
-  };
+  // Every currently-open position across all 6 concurrent SB/TL instances
+  // (not just one) — see multi_symbol_targets.py on the backend.
+  open_positions?: OpenPosition[];
+  // One entry per (strategy, symbol) instance the bot is configured to
+  // trade — replaces the old single symbol/price fields now that Silver
+  // Bullet and Trendline each run across their own top-3 symbols.
+  active_symbols?: ActiveSymbol[];
   // Extras surfaced from backend config so the UI never lies about settings.
-  symbol?: string;
   risk_pct?: string;
   max_trades?: string;
   timeframe?: string;
   market_open?: boolean;
-  price?: string | null;
 }
 
 export interface LogEntry {
@@ -65,6 +79,7 @@ export interface LogEntry {
 export interface Trade {
   id: string;
   date: string;
+  symbol?: string;
   side: "BUY" | "SELL";
   lots: string;
   entry: string;
@@ -84,7 +99,6 @@ export interface MarketReading {
 export interface Settings {
   login: string;
   server: string;
-  symbol: string;
   risk_pct: string;
   daily_loss_limit_usd: string;
   max_trades_per_day: string;
@@ -94,6 +108,11 @@ export interface Settings {
   news:       boolean;
   // Write-only: never populated from the backend. Blank means "don't change".
   password?: string;
+  // Read-only: trading symbols come from the backend's multi_symbol_targets
+  // config (top-3 per strategy by backtested profit factor), not a
+  // user-editable field — never sent back on save.
+  sb_symbols?: string[];
+  tl_symbols?: string[];
 }
 
 export const apiClient = {

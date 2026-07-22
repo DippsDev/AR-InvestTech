@@ -22,7 +22,7 @@ export const PERSONAS: Record<string, Persona> = {
   Trader: {
     name: "Trader", color: "#22C55E", role: "Entries & exits",
     skin: "#C68642", hair: "#1C1310",
-    idleNote: "No trades yet — waiting for a Silver Bullet setup.",
+    idleNote: "No trades yet — waiting for a Silver Bullet or Trendline setup.",
   },
   Risk: {
     name: "Risk", color: "#F97316", role: "Loss & drawdown limits",

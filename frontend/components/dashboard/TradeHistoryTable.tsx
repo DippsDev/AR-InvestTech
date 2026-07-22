@@ -5,7 +5,7 @@ interface Props {
   trades: Trade[];
 }
 
-const COLS = ["Date", "Side", "Lots", "Entry", "Exit", "Pips", "P/L"];
+const COLS = ["Date", "Symbol", "Side", "Lots", "Entry", "Exit", "Pips", "P/L"];
 
 export default function TradeHistoryTable({ trades }: Props) {
   return (
@@ -57,6 +57,9 @@ export default function TradeHistoryTable({ trades }: Props) {
                       <span style={{ fontSize: 11, fontWeight: 700, color: t.side === "BUY" ? "#22C55E" : "#EF4444" }}>
                         {t.side}
                       </span>
+                      {t.symbol && (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--dash-text)" }}>{t.symbol}</span>
+                      )}
                       <span style={{ fontSize: 11, color: "var(--dash-text-dim)" }}>{t.date}</span>
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: t.win ? "#22C55E" : "#EF4444" }}>
@@ -97,7 +100,7 @@ export default function TradeHistoryTable({ trades }: Props) {
                       <th
                         key={c}
                         style={{
-                          textAlign: c === "Date" || c === "Side" ? "left" : "right",
+                          textAlign: c === "Date" || c === "Symbol" || c === "Side" ? "left" : "right",
                           padding: "4px 8px",
                           fontSize: 10,
                           fontWeight: 700,
@@ -115,6 +118,7 @@ export default function TradeHistoryTable({ trades }: Props) {
                   {trades.map((t) => (
                     <tr key={t.id} style={{ borderLeft: `3px solid ${t.win ? "#22C55E" : "#EF4444"}` }}>
                       <td style={{ padding: "6px 8px", color: "var(--dash-text)" }}>{t.date}</td>
+                      <td style={{ padding: "6px 8px", color: "var(--dash-text)", fontWeight: 600 }}>{t.symbol ?? "—"}</td>
                       <td style={{ padding: "6px 8px", color: t.side === "BUY" ? "#22C55E" : "#EF4444", fontWeight: 700 }}>
                         {t.side}
                       </td>

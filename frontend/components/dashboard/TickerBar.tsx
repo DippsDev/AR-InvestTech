@@ -141,12 +141,22 @@ function TradeToggle({ running, onStartBot, onStopBot }: Pick<Props, "running" |
 }
 
 export default function TickerBar({ running, stats, onOpenSettings, onDisconnect, onStartBot, onStopBot }: Props) {
+  // One fact per uniquely-traded symbol (DE30m is traded by both SB and TL,
+  // at the same price, so it only needs one tile here).
+  const symbolFacts: { label: string; value: string }[] = [];
+  const seen = new Set<string>();
+  for (const s of stats?.active_symbols ?? []) {
+    if (seen.has(s.symbol)) continue;
+    seen.add(s.symbol);
+    symbolFacts.push({ label: s.symbol, value: s.price ?? "--" });
+  }
+
   const facts: { label: string; value: string }[] = stats
     ? [
         { label: "BALANCE", value: stats.balance },
         { label: "EQUITY", value: stats.equity },
         { label: "P/L", value: stats.profit },
-        { label: stats.symbol || "US30", value: stats.price ? stats.price : "--" },
+        ...symbolFacts,
         { label: "SESSION", value: stats.session },
       ]
     : [{ label: "STATUS", value: "Connecting…" }];

@@ -103,7 +103,7 @@ export default function Activation({ onActivated, doValidate }: Props) {
           </div>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: "var(--dash-text)" }}>ARI_Sniper_EA</div>
-            <div style={{ fontSize: 11, color: "var(--dash-text-dim)", marginTop: 1 }}>Silver Bullet · US30</div>
+            <div style={{ fontSize: 11, color: "var(--dash-text-dim)", marginTop: 1 }}>Silver Bullet · Trendline · Multi-Symbol</div>
           </div>
         </div>
 
