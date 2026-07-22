@@ -292,16 +292,18 @@ class BotBridge:
         equity  = account["equity"]  if account else 0.0
         profit  = account["profit"]  if account else 0.0
 
-        open_trade = None
-        if positions:
-            try:
-                import MetaTrader5 as mt5
-                pos = positions[0]
+        # Up to 6 concurrent instances (3 SB symbols + 3 TL symbols) can each
+        # have a position open at once — report all of them, not just one.
+        open_trades = []
+        try:
+            import MetaTrader5 as mt5
+            for pos in positions:
                 breakeven_set = (
                     (pos.sl >= pos.price_open if pos.type == mt5.ORDER_TYPE_BUY else pos.sl <= pos.price_open)
                     if pos.sl != 0 else False
                 )
-                open_trade = {
+                open_trades.append({
+                    "ticket":    pos.ticket,
                     "symbol":    pos.symbol,
                     "side":      "BUY" if pos.type == mt5.ORDER_TYPE_BUY else "SELL",
                     "entry":     f"{pos.price_open:,.2f}",
@@ -310,9 +312,9 @@ class BotBridge:
                     "float_pnl": f"+${pos.profit:.2f}" if pos.profit >= 0 else f"-${abs(pos.profit):.2f}",
                     "lots":      f"{pos.volume:.2f}",
                     "breakeven": breakeven_set,
-                }
-            except Exception:
-                pass
+                })
+        except Exception:
+            pass
 
         next_refresh = "--"
         if running and self._start_time:
@@ -369,15 +371,27 @@ class BotBridge:
 
         import config as _cfg
         import MetaTrader5 as mt5
-        market_open = False
-        price = None
-        if self._mt5_ok and _cfg.SB_SYMBOL:
-            tick = mt5.symbol_info_tick(_cfg.SB_SYMBOL)
-            sym = mt5.symbol_info(_cfg.SB_SYMBOL)
-            if tick is not None and sym is not None and sym.trade_mode == mt5.SYMBOL_TRADE_MODE_FULL:
-                last_tick = datetime.fromtimestamp(tick.time, tz=timezone.utc)
-                market_open = (datetime.now(tz=timezone.utc) - last_tick).total_seconds() < 300
-                price = f"{tick.bid:,.2f}"
+        from multi_symbol_targets import SB_TARGETS, TL_TARGETS
+
+        # One reading per configured instance (a symbol traded by both
+        # strategies, e.g. DE30m, appears twice — once per strategy — since
+        # each has its own independent adapter/position/risk on it).
+        active_symbols = []
+        any_market_open = False
+        for strategy, targets in (("SB", SB_TARGETS), ("TL", TL_TARGETS)):
+            for symbol in targets:
+                entry = {"symbol": symbol, "strategy": strategy, "price": None, "market_open": False}
+                if self._mt5_ok:
+                    tick = mt5.symbol_info_tick(symbol)
+                    sym = mt5.symbol_info(symbol)
+                    if tick is not None and sym is not None and sym.trade_mode == mt5.SYMBOL_TRADE_MODE_FULL:
+                        last_tick = datetime.fromtimestamp(tick.time, tz=timezone.utc)
+                        is_open = (datetime.now(tz=timezone.utc) - last_tick).total_seconds() < 300
+                        entry["market_open"] = is_open
+                        entry["price"] = f"{tick.bid:,.2f}"
+                        any_market_open = any_market_open or is_open
+                active_symbols.append(entry)
+
         return {
             "running":        running,
             "connected":      self._mt5_ok,
@@ -385,16 +399,15 @@ class BotBridge:
             "equity":         f"${equity:,.2f}"  if account else "--",
             "profit":         (f"+${profit:.2f}" if profit >= 0 else f"-${abs(profit):.2f}") if account else "--",
             "open_trades":    str(len(positions)),
-            "open_trade":     open_trade,
+            "open_positions": open_trades,
             "next_refresh":   next_refresh,
             "session":        session,
             "daily_cap_used": "--",
-            "symbol":         _cfg.SB_SYMBOL,
+            "active_symbols": active_symbols,
             "risk_pct":       str(_cfg.SB_RISK_PCT),
             "max_trades":     str(_cfg.SB_MAX_TRADES_PER_DAY),
             "timeframe":      "M5",
-            "market_open":    market_open,
-            "price":          price,
+            "market_open":    any_market_open,
         }
 
     # ── Market snapshot (dashboard heatmap) ─────────────────────────────────────
@@ -419,11 +432,11 @@ class BotBridge:
             return empty
 
     def get_market_snapshot(self) -> list:
-        import config as _cfg
-        return [
-            self._get_symbol_reading(_cfg.SB_SYMBOL, "US30"),
-            self._get_symbol_reading(_cfg.SB_GOLD_SYMBOL, "GOLD"),
-        ]
+        from multi_symbol_targets import SB_TARGETS, TL_TARGETS
+        # Unique symbols across both strategies' top-3 targets — a symbol
+        # traded by both (e.g. DE30m) gets one heatmap tile, not two.
+        symbols = list(dict.fromkeys(list(SB_TARGETS) + list(TL_TARGETS)))
+        return [self._get_symbol_reading(sym, sym) for sym in symbols]
 
     def _get_account(self) -> Optional[dict]:
         if not self._mt5_ok:
@@ -502,6 +515,7 @@ class BotBridge:
                 rows.append({
                     "id":       f"#{c.position_id}",
                     "date":     datetime.fromtimestamp(c.time).strftime("%b %d"),
+                    "symbol":   c.symbol,
                     "side":     side,
                     "lots":     f"{c.volume:.2f}",
                     "entry":    f"{o.price:,.2f}",
@@ -583,10 +597,15 @@ class BotBridge:
 
     def get_settings(self) -> dict:
         import config
+        from multi_symbol_targets import SB_TARGETS, TL_TARGETS
         return {
             "login":                str(config.MT5_LOGIN),
             "server":               config.MT5_SERVER,
-            "symbol":               config.SB_SYMBOL,
+            # Read-only: trading symbols come from multi_symbol_targets.py
+            # (top-3 per strategy by backtested profit factor), not a single
+            # user-editable field — there's no one "the symbol" anymore.
+            "sb_symbols":           list(SB_TARGETS),
+            "tl_symbols":           list(TL_TARGETS),
             "risk_pct":             str(config.SB_RISK_PCT),
             "daily_loss_limit_usd": str(config.SB_DAILY_LOSS_LIMIT_USD),
             "max_trades_per_day":   str(config.SB_MAX_TRADES_PER_DAY),
@@ -603,7 +622,6 @@ class BotBridge:
             mapping = {
                 "login":                "MT5_LOGIN",
                 "server":               "MT5_SERVER",
-                "symbol":               "SB_SYMBOL",
                 "risk_pct":             "SB_RISK_PCT",
                 "daily_loss_limit_usd": "SB_DAILY_LOSS_LIMIT_USD",
                 "max_trades_per_day":   "SB_MAX_TRADES_PER_DAY",

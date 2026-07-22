@@ -58,10 +58,16 @@ class _OpenPosition:
 class TrendlineLiveAdapter:
     """Stateful, bar-by-bar adapter. Instantiate once; call .cycle() every 5s."""
 
-    def __init__(self, cfg: TrendlineConfig, symbol: Optional[str] = None):
+    def __init__(self, cfg: TrendlineConfig, symbol: Optional[str] = None,
+                 risk_pct_override: Optional[float] = None):
         self._cfg = cfg
         self._generator = SignalGenerator(cfg)
         self._symbol: Optional[str] = symbol
+        # When multiple instances of this strategy run concurrently on
+        # different symbols, each is given a fraction of TL_RISK_PCT
+        # (see bot.py) so total account risk stays comparable to a single
+        # instance. None means "use TL_RISK_PCT directly".
+        self._risk_pct_override: Optional[float] = risk_pct_override
         self._last_bar_time: Optional[pd.Timestamp] = None
         # Open positions this adapter placed, keyed by MT5 ticket — a dict
         # rather than a single slot so several can be live at once when
@@ -603,7 +609,11 @@ class TrendlineLiveAdapter:
             )
             return None
 
-        risk_pct = max(0.01, min(float(getattr(root_config, "TL_RISK_PCT", 1.0)), 100.0))
+        base_risk_pct = (
+            self._risk_pct_override if self._risk_pct_override is not None
+            else float(getattr(root_config, "TL_RISK_PCT", 1.0))
+        )
+        risk_pct = max(0.01, min(base_risk_pct, 100.0))
         if usable_capital < 200.0:
             risk_pct = min(risk_pct, 2.0)
 
@@ -698,6 +708,12 @@ class TrendlineLiveAdapter:
         daily_pnl = 0.0
         daily_entries = 0
         for deal in deals:
+            # Scope to this instance's own symbol first — with multiple TL
+            # instances trading different symbols under the shared TL_MAGIC,
+            # magic/own_tickets alone would pool every symbol's deals into
+            # one count, silently applying one instance's daily cap to all.
+            if deal.symbol != symbol:
+                continue
             if deal.magic != TL_MAGIC and deal.position_id not in own_tickets:
                 continue
             if deal.type in (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL):

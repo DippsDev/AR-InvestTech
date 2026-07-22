@@ -108,7 +108,6 @@ def get_settings():
 class SettingsBody(BaseModel):
     login: str = ""
     server: str = ""
-    symbol: str = "US30"
     risk_pct: str = "1.0"
     daily_loss_limit_usd: str = "3.0"
     max_trades_per_day: str = "2"

@@ -1,20 +1,24 @@
 """
 AR Investments — Silver Bullet Bot
-Strategy: ICT Silver Bullet on US30 (Dow Jones), M5 candles
-Active  : NY 10:00–12:00 only
-Risk    : 1% per trade, stop behind swept extreme, 3R target
+Strategy: ICT Silver Bullet + Trendline, each run concurrently across their
+          own top-3 symbols (see multi_symbol_targets.py) rather than a
+          single shared US30 instrument.
+Risk    : SB_RISK_PCT / TL_RISK_PCT each divided evenly across all running
+          instances, so total account risk stays roughly what one pair used
+          to risk on US30 alone.
 """
 import time
+from dataclasses import replace as _dc_replace
 
 import config
 from silver_bullet.config import SilverBulletConfig
 from silver_bullet.live_adapter import SilverBulletLiveAdapter
 from trendline.config import TrendlineConfig
 from trendline.live_adapter import TrendlineLiveAdapter
+from multi_symbol_targets import SB_TARGETS, TL_TARGETS
 from src.data_collector import (
     connect_mt5,
     disconnect_mt5,
-    find_us30_symbol,
     get_account_info,
 )
 from src.logger import logger
@@ -22,55 +26,73 @@ from src.logger import logger
 
 class SilverBulletBot:
     def __init__(self, gui_mode: bool = False):
-        cfg = SilverBulletConfig()
+        base_cfg = SilverBulletConfig()
         if config.SB_AGGRESSIVE:
-            cfg.one_trade_per_window = False
-            cfg.fvg_min_points = 3.0
-            cfg.min_risk_points = 2.0
+            base_cfg.one_trade_per_window = False
+            base_cfg.fvg_min_points = 3.0
+            base_cfg.min_risk_points = 2.0
             # London session windows (03:00-05:00 ET) plus an early-afternoon
             # NY window (13:30-14:30 ET), on top of the core 10:00-12:00 pair.
             # Backtested combination (see 3y US30 M5 backtest): 97 trades vs
             # 67 baseline, win rate 55.7% vs 52.2%, profit factor 2.55 vs 2.60
             # — meaningfully more frequent for almost no edge cost.
-            cfg.windows = [
+            base_cfg.windows = [
                 ("03:00", "04:00"), ("04:00", "05:00"),
                 ("10:00", "11:00"), ("11:00", "12:00"),
                 ("13:30", "14:30"),
             ]
         if config.SB_OFF_HOURS:
-            cfg.off_hours_trading = True
+            base_cfg.off_hours_trading = True
         # Respect the SB_NEWS env toggle — when True, no new trades on high-impact news days.
-        cfg.skip_news_days = config.SB_NEWS
+        base_cfg.skip_news_days = config.SB_NEWS
         # Silver Bullet defaults to limit orders for better entry prices.
         # Market-order mode is only enabled for the explicit sweep-entry demo mode.
         if config.SB_SWEEP_ENTRY:
-            cfg.sweep_entry_mode = True
-            cfg.use_market_order = True  # sweep entry always uses market orders
-        self.cfg = cfg
-        self._symbol: str | None = None
-        self.adapter = SilverBulletLiveAdapter(cfg, symbol=None)
+            base_cfg.sweep_entry_mode = True
+            base_cfg.use_market_order = True  # sweep entry always uses market orders
+        self.base_cfg = base_cfg
+
+        self.tl_enabled = config.TL_ENABLED
+        base_tl_cfg = TrendlineConfig()
+        base_tl_cfg.skip_news_days = config.TL_NEWS
+        self.base_tl_cfg = base_tl_cfg
+
+        # Total concurrent instances across both strategies — each instance's
+        # risk % is its strategy's configured risk_pct divided by this count,
+        # so running many symbols at once doesn't multiply total account risk.
+        total_instances = len(SB_TARGETS) + (len(TL_TARGETS) if self.tl_enabled else 0)
+        self._instance_count = max(1, total_instances)
+
+        # symbol -> adapter, one instance per top-3 target (see
+        # multi_symbol_targets.py). Each gets its own volatility-scaled
+        # thresholds and its own share of the strategy's risk budget.
+        self.sb_adapters: dict[str, SilverBulletLiveAdapter] = {}
+        for symbol, overrides in SB_TARGETS.items():
+            cfg = _dc_replace(base_cfg, symbol=symbol, **overrides)
+            risk_share = config.SB_RISK_PCT / self._instance_count
+            self.sb_adapters[symbol] = SilverBulletLiveAdapter(
+                cfg, symbol=symbol, risk_pct_override=risk_share
+            )
+
+        self.tl_adapters: dict[str, TrendlineLiveAdapter] = {}
+        if self.tl_enabled:
+            for symbol, overrides in TL_TARGETS.items():
+                cfg = _dc_replace(base_tl_cfg, symbol=symbol, **overrides)
+                risk_share = config.TL_RISK_PCT / self._instance_count
+                self.tl_adapters[symbol] = TrendlineLiveAdapter(
+                    cfg, symbol=symbol, risk_pct_override=risk_share
+                )
+
         self.running = False
         self._gui_mode = gui_mode  # when True, bridge owns MT5 — skip disconnect on shutdown
 
-        # Trendline strategy — independent second strategy, off by default.
-        # Fully gated so that when TL_ENABLED is false (the default), every
-        # branch below is skipped and behavior is identical to before this
-        # strategy existed.
-        self.tl_enabled = config.TL_ENABLED
-        self.tl_symbol: str | None = None
-        self.tl_adapter: TrendlineLiveAdapter | None = None
-        if self.tl_enabled:
-            tl_cfg = TrendlineConfig()
-            tl_cfg.skip_news_days = config.TL_NEWS
-            self.tl_adapter = TrendlineLiveAdapter(tl_cfg, symbol=None)
-
-        # News Analyst — shadow-mode daily bias (see news_analyst.py).
-        # Purely observational; never gates or sizes real trades.
-        self._news_analyst_date: str | None = None
+        # News Analyst (see news_analyst.py) is US30-specific shadow-mode
+        # commentary and isn't wired to any of the multi-symbol targets —
+        # not called from run() below.
 
     def initialize(self) -> bool:
         logger.info("=" * 60)
-        logger.info("  Silver Bullet Bot (US30) — Starting Up")
+        logger.info("  AR Investments Bot — Multi-Symbol Starting Up")
         logger.info("=" * 60)
 
         if not connect_mt5():
@@ -83,142 +105,98 @@ class SilverBulletBot:
                 f"Equity: ${account['equity']:.2f}"
             )
 
-        resolved = find_us30_symbol()
-        if resolved:
-            config.SB_SYMBOL = resolved
-            self._symbol = resolved
-            self.adapter._symbol = resolved
-        else:
-            logger.error("US30 symbol not found on this broker — set SB_SYMBOL in .env")
+        import MetaTrader5 as mt5
+
+        # Verify every configured symbol actually exists on this broker
+        # before trading it — drop (not abort on) any that don't resolve.
+        for symbol in list(self.sb_adapters):
+            if mt5.symbol_info(symbol) is None:
+                logger.error(f"[SB] Symbol {symbol} not found on this broker — dropping instance")
+                del self.sb_adapters[symbol]
+            else:
+                self._log_connection_diagnostics("SB", symbol)
+
+        for symbol in list(self.tl_adapters):
+            if mt5.symbol_info(symbol) is None:
+                logger.error(f"[TL] Symbol {symbol} not found on this broker — dropping instance")
+                del self.tl_adapters[symbol]
+            else:
+                self._log_connection_diagnostics("TL", symbol)
+
+        if not self.sb_adapters and not self.tl_adapters:
+            logger.error("No configured symbols resolved on this broker — nothing to trade")
             return False
 
-        self._log_connection_diagnostics(resolved)
-
-        if self.tl_enabled:
-            # Trendline now trades the SAME instrument as Silver Bullet (US30),
-            # not a separate EURUSD symbol — reuse the already-resolved symbol
-            # rather than doing an independent broker lookup, so there is no
-            # way for the two strategies to end up on different instruments.
-            config.TL_SYMBOL = resolved
-            self.tl_symbol = resolved
-            self.tl_adapter._symbol = resolved
-            logger.info(f"Trendline strategy enabled | Symbol: {resolved}")
+        # Dashboard (bridge.py) reads config.SB_SYMBOL/TL_SYMBOL for its price
+        # ticker and heatmap tile — display-only now; trading itself iterates
+        # self.sb_adapters/self.tl_adapters, not these globals.
+        if self.sb_adapters:
+            config.SB_SYMBOL = next(iter(self.sb_adapters))
+        if self.tl_adapters:
+            config.TL_SYMBOL = next(iter(self.tl_adapters))
 
         self.running = True
-        windows_str = ", ".join(f"{s}-{e} ET" for s, e in self.cfg.windows)
-        order_type = "MARKET" if self.cfg.use_market_order else "LIMIT"
-        news_mode = "SKIP NEWS" if self.cfg.skip_news_days else "NEWS ALLOWED"
-        logger.info(f"Bot ready | Symbol: {self._symbol} | Windows: {windows_str} | Order: {order_type} | {news_mode}")
+        sb_syms = ", ".join(self.sb_adapters) or "(none)"
+        tl_syms = ", ".join(self.tl_adapters) or "(none)"
+        logger.info(
+            f"Bot ready | SB symbols: {sb_syms} | TL symbols: {tl_syms} | "
+            f"risk split across {self._instance_count} instances"
+        )
         return True
 
-    def _log_connection_diagnostics(self, symbol: str) -> None:
-        """Log the account/symbol/terminal details worth knowing at a glance
-        whenever the bot starts — the same things worth checking by hand
-        when diagnosing "is this actually connected and able to trade"."""
+    def _log_connection_diagnostics(self, label: str, symbol: str) -> None:
+        """Log the symbol/spread details worth knowing at a glance whenever
+        the bot starts — the same things worth checking by hand when
+        diagnosing "is this actually connected and able to trade"."""
         try:
             import MetaTrader5 as mt5
-            acc = mt5.account_info()
-            if acc:
-                logger.info(
-                    f"Account | Login: {acc.login} | Server: {acc.server} | "
-                    f"Leverage: 1:{acc.leverage} | Currency: {acc.currency} | "
-                    f"AlgoTrading allowed: {acc.trade_expert} | Trade allowed: {acc.trade_allowed}"
-                )
             info = mt5.symbol_info(symbol)
             tick = mt5.symbol_info_tick(symbol)
             if info and tick:
                 spread_pts = (tick.ask - tick.bid) / info.point if info.point else 0
                 logger.info(
-                    f"Symbol | {symbol} | trade_mode={info.trade_mode} (4=full) | "
+                    f"[{label}] Symbol | {symbol} | trade_mode={info.trade_mode} (4=full) | "
                     f"volume_min={info.volume_min} volume_max={info.volume_max} "
                     f"step={info.volume_step} | digits={info.digits} | "
                     f"spread={spread_pts:.1f}pts | bid={tick.bid} ask={tick.ask}"
                 )
-            logger.info(f"Terminal | Path: {config.MT5_PATH or '(auto-detected)'}")
         except Exception as exc:
-            logger.warning(f"Connection diagnostics unavailable: {exc}")
-
-    def _maybe_run_news_analyst(self, symbol: str) -> None:
-        """Shadow-mode: once per NY trading day, ask Claude for a US30
-        directional bias and log/persist it for later evaluation. Also
-        grades any prior day's call against what price actually did.
-        Never gates or sizes real trades — failures here must never take
-        down the bot loop."""
-        if not (config.NEWS_ANALYST_ENABLED and config.ANTHROPIC_API_KEY):
-            return
-
-        from datetime import datetime
-        from zoneinfo import ZoneInfo
-
-        today_ny = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
-        if today_ny == self._news_analyst_date:
-            return
-        self._news_analyst_date = today_ny
-
-        try:
-            import MetaTrader5 as mt5
-            import news_analyst
-
-            tick = mt5.symbol_info_tick(symbol)
-            if tick is None:
-                logger.warning("[Analyst] No tick data — skipping today's bias call")
-                return
-            price = (tick.bid + tick.ask) / 2
-
-            if not news_analyst.has_called_today(today_ny):
-                call = news_analyst.get_daily_bias(reference_price=price)
-                news_analyst.record_bias(call)
-                logger.info(
-                    f"[Analyst] Bias {call.direction.upper()} "
-                    f"(confidence {call.confidence:.2f}) | {call.reasoning[:200]}"
-                )
-
-            graded = news_analyst.grade_pending_calls(current_price=price, current_date=today_ny)
-            for g in graded:
-                outcome = "correct" if g.graded else "incorrect"
-                logger.info(
-                    f"[Analyst] Graded {g.date} | called {g.direction} | "
-                    f"actual {g.actual_direction} | {outcome}"
-                )
-        except Exception as exc:
-            logger.warning(f"[Analyst] Daily bias check failed: {exc}")
+            logger.warning(f"[{label}] Connection diagnostics unavailable for {symbol}: {exc}")
 
     def run(self) -> None:
         if not self.initialize():
             logger.error("Initialization failed — exiting")
             return
 
-        symbol = self._symbol or config.SB_SYMBOL
         try:
             while self.running:
-                self._maybe_run_news_analyst(symbol)
+                # Adaptive daily-trade floor: share every instance's real,
+                # MT5-history-derived trade count with all the others so each
+                # can tell whether the combined total is behind pace for
+                # today (see SilverBulletLiveAdapter._boost_active).
+                combined_trades = sum(a._daily_trades for a in self.sb_adapters.values())
+                combined_trades += sum(a._daily_trades for a in self.tl_adapters.values())
+                for a in self.sb_adapters.values():
+                    a.combined_daily_trades = combined_trades
+                for a in self.tl_adapters.values():
+                    a.combined_daily_trades = combined_trades
 
-                # Adaptive daily-trade floor: share each strategy's real,
-                # MT5-history-derived trade count with the other so both can
-                # tell whether the combined total is behind pace for today
-                # (see SilverBulletLiveAdapter._boost_active).
-                combined_trades = self.adapter._daily_trades + (
-                    self.tl_adapter._daily_trades if self.tl_enabled else 0
-                )
-                self.adapter.combined_daily_trades = combined_trades
-                if self.tl_enabled:
-                    self.tl_adapter.combined_daily_trades = combined_trades
-
-                try:
-                    self.adapter.cycle(symbol)
-                except Exception as exc:
-                    logger.error(f"[SB] Error in cycle: {exc}", exc_info=True)
-                if self.tl_enabled and self.tl_symbol:
+                for symbol, adapter in self.sb_adapters.items():
                     try:
-                        self.tl_adapter.cycle(self.tl_symbol)
+                        adapter.cycle(symbol)
                     except Exception as exc:
-                        logger.error(f"[TL] Error in cycle: {exc}", exc_info=True)
+                        logger.error(f"[SB] Error in {symbol} cycle: {exc}", exc_info=True)
+                for symbol, adapter in self.tl_adapters.items():
+                    try:
+                        adapter.cycle(symbol)
+                    except Exception as exc:
+                        logger.error(f"[TL] Error in {symbol} cycle: {exc}", exc_info=True)
                 # 5-second sleep with a 1-second heartbeat so the log shows
                 # the bot is alive at every second.
                 for remaining in range(5, 0, -1):
                     if not self.running:
                         break
-                    logger.debug(f"[SB] Heartbeat | next cycle in {remaining}s")
+                    logger.debug(f"[Bot] Heartbeat | next cycle in {remaining}s")
                     time.sleep(1)
         except KeyboardInterrupt:
             logger.info("Keyboard interrupt — shutting down")
@@ -227,9 +205,10 @@ class SilverBulletBot:
 
     def _shutdown(self) -> None:
         logger.info("Closing positions and disconnecting...")
-        self.adapter.shutdown(self._symbol or config.SB_SYMBOL)
-        if self.tl_enabled and self.tl_symbol:
-            self.tl_adapter.shutdown(self.tl_symbol)
+        for symbol, adapter in self.sb_adapters.items():
+            adapter.shutdown(symbol)
+        for symbol, adapter in self.tl_adapters.items():
+            adapter.shutdown(symbol)
         if not self._gui_mode:
             disconnect_mt5()
         logger.info("Bot stopped.")

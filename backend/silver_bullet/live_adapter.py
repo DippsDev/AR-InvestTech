@@ -66,12 +66,19 @@ class _OpenPosition:
 class SilverBulletLiveAdapter:
     """Stateful, bar-by-bar adapter.  Instantiate once; call .cycle() every 30 s."""
 
-    def __init__(self, cfg: SilverBulletConfig, symbol: Optional[str] = None):
+    def __init__(self, cfg: SilverBulletConfig, symbol: Optional[str] = None,
+                 risk_pct_override: Optional[float] = None):
         self._cfg = cfg
         self._generator = SignalGenerator(cfg)
         # Symbol we are allowed to trade.  All MT5 operations are guarded against
         # this to prevent cross-instrument execution.
         self._symbol: Optional[str] = symbol
+        # When multiple instances of this strategy run concurrently on
+        # different symbols, each is given a fraction of SB_RISK_PCT
+        # (see bot.py) so total account risk stays comparable to a single
+        # instance. None means "use SB_RISK_PCT directly" (single-instance,
+        # default behavior).
+        self._risk_pct_override: Optional[float] = risk_pct_override
         self._last_bar_time: Optional[pd.Timestamp] = None  # last processed bar timestamp
         # Pending orders and open positions this adapter placed, keyed by MT5
         # ticket — a dict rather than a single slot so several can be live at
@@ -920,10 +927,14 @@ class SilverBulletLiveAdapter:
             )
             return None
 
-        # Clamp SB_RISK_PCT to a sane range.  On accounts under $200 also
-        # enforce a 2% ceiling so a misconfigured env var cannot blow up
-        # a micro account in one trade.
-        risk_pct = max(0.01, min(float(root_config.SB_RISK_PCT), 100.0))
+        # Clamp SB_RISK_PCT (or this instance's override share of it) to a
+        # sane range.  On accounts under $200 also enforce a 2% ceiling so a
+        # misconfigured env var cannot blow up a micro account in one trade.
+        base_risk_pct = (
+            self._risk_pct_override if self._risk_pct_override is not None
+            else float(root_config.SB_RISK_PCT)
+        )
+        risk_pct = max(0.01, min(base_risk_pct, 100.0))
         if usable_capital < 200.0:
             risk_pct = min(risk_pct, 2.0)
 
@@ -1026,6 +1037,12 @@ class SilverBulletLiveAdapter:
         daily_pnl = 0.0
         daily_entries = 0
         for deal in deals:
+            # Scope to this instance's own symbol first — with multiple SB
+            # instances trading different symbols under the shared SB_MAGIC,
+            # magic/own_tickets alone would pool every symbol's deals into
+            # one count, silently applying one instance's daily cap to all.
+            if deal.symbol != symbol:
+                continue
             if deal.magic != SB_MAGIC and deal.position_id not in own_tickets:
                 continue
             if deal.type in (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL):
