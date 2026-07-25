@@ -48,7 +48,7 @@ function EventCard({ evt }: { evt: CalendarEvent }) {
               style={{
                 fontSize: 8,
                 fontWeight: 800,
-                color: "#FFFFFF",
+                color: "var(--dash-text)",
                 background: evt.tagColor || "#374151",
                 padding: "2px 5px",
                 borderRadius: 3,

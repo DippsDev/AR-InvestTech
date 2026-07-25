@@ -66,7 +66,7 @@ export default function MarketHeatmap({ readings }: Props) {
             style={{
               fontSize: 15,
               fontWeight: 800,
-              color: "#F9FAFB",
+              color: "var(--dash-text)",
               letterSpacing: ".02em",
               maxWidth: "100%",
               overflow: "hidden",
@@ -76,11 +76,11 @@ export default function MarketHeatmap({ readings }: Props) {
           >
             {r.label}
           </span>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#F9FAFB" }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--dash-text)" }}>
             {r.change_pct === null ? "--" : `${r.change_pct >= 0 ? "+" : ""}${r.change_pct.toFixed(2)}%`}
           </span>
           {r.price && (
-            <span style={{ fontSize: 10, color: "rgba(249,250,251,0.75)" }}>{r.price}</span>
+            <span style={{ fontSize: 10, color: "var(--dash-text)", opacity: 0.75 }}>{r.price}</span>
           )}
         </div>
       ))}

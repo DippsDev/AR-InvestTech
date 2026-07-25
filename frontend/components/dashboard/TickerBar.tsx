@@ -15,7 +15,7 @@ interface Props {
 function Fact({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ display: "inline-flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
-      <span style={{ fontWeight: 700, color: "#F3F4F6" }}>{label}</span>
+      <span style={{ fontWeight: 700, color: "var(--dash-text)" }}>{label}</span>
       <span style={{ color: "var(--dash-text-muted)" }}>{value}</span>
     </div>
   );
@@ -168,7 +168,7 @@ export default function TickerBar({ running, stats, onOpenSettings, onDisconnect
         display: "flex",
         alignItems: "center",
         height: 40,
-        background: "#0F1318",
+        background: "var(--dash-ticker-bg)",
         borderBottom: "1px solid var(--dash-border)",
         fontSize: 12,
         whiteSpace: "nowrap",
@@ -202,13 +202,13 @@ export default function TickerBar({ running, stats, onOpenSettings, onDisconnect
           alignItems: "center",
           gap: 24,
           padding: "0 16px",
-          background: "#0F1318",
+          background: "var(--dash-ticker-bg)",
           zIndex: 2,
           flexShrink: 0,
         }}
       >
         <MenuButton onOpenSettings={onOpenSettings} onDisconnect={onDisconnect} />
-        <span className="ticker-detail" style={{ color: "#F3F4F6", fontWeight: 700 }}>
+        <span className="ticker-detail" style={{ color: "var(--dash-text)", fontWeight: 700 }}>
           {stats?.equity ?? "--"}
         </span>
         <span className="ticker-detail" style={{ color: stats?.profit?.startsWith("-") ? "#EF4444" : "#22C55E" }}>

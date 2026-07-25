@@ -64,7 +64,7 @@ export default function BotLog({ log, running }: Props) {
                   gap: 8,
                   marginLeft: synthetic ? 20 : 0,
                   opacity: synthetic ? 0.8 : 1,
-                  background: "rgba(255,255,255,0.03)",
+                  background: "var(--dash-subtle-bg)",
                   borderLeft: `3px solid ${persona.color}`,
                   borderRadius: 6,
                   padding: "8px 10px",
