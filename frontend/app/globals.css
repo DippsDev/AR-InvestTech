@@ -207,6 +207,10 @@ body {
 .dashboard-root {
   height: 100vh;
   height: 100dvh;
+  /* The viewport meta tag already sets user-scalable=no / maximum-scale=1.
+     This CSS rule adds the gesture-level backstop for touch devices so the
+     dashboard itself (and its descendants) never responds to pinch-zoom. */
+  touch-action: pan-y;
 }
 
 .settings-screen {
@@ -420,6 +424,13 @@ html, body {
   .dash-body,
   .dash-main-col {
     max-width: 100vw;
+    width: 100%;
+  }
+  .full-viewport,
+  .dashboard-root,
+  .dash-scroll-area,
+  .dash-chat-col {
+    width: 100%;
   }
   /* dash-body/dash-scroll-area used a blanket `overflow: visible` so mobile
      gets one continuous page scroll instead of a nested inner scrollbar —
@@ -486,6 +497,21 @@ html, body {
     flex: 0 0 auto !important;
     max-height: 420px !important;
     padding: 0 14px 14px !important;
+  }
+
+  /* Trades: hide wide desktop table and show mobile cards at the same
+     breakpoint the dashboard switches to mobile layout (≤900px). Keeping the
+     old 768px breakpoint left the 600px-wide table visible in the mobile
+     column layout, which created a horizontal scrollbar. */
+  .tbl-wrap    { display: none; }
+  .trade-cards { display: flex; flex-direction: column; gap: 8px; }
+  .tbl-row     { min-width: 0; }
+
+  /* Cards like trade history use .dark-scroll for vertical scrolling; make sure
+     they never advertise a horizontal scrollbar on phones. */
+  .dark-scroll {
+    overflow-x: hidden !important;
+    touch-action: pan-y;
   }
 }
 
@@ -589,11 +615,6 @@ html, body {
   /* Hide verbose header text */
   .mob-hide-inline { display: none !important; }
   .desk-hide       { display: flex; }
-
-  /* Trades: hide wide table, show cards */
-  .tbl-wrap    { display: none; }
-  .trade-cards { display: flex; flex-direction: column; gap: 8px; }
-  .tbl-row     { min-width: 0; }
 
 
 }
