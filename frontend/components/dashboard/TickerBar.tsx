@@ -36,6 +36,7 @@ function MenuButton({ onOpenSettings, onDisconnect }: Pick<Props, "onOpenSetting
 
   const item = (label: string, onClick: () => void, danger = false) => (
     <button
+      className="menu-item"
       onClick={() => { setOpen(false); onClick(); }}
       style={{
         display: "block",
@@ -50,8 +51,6 @@ function MenuButton({ onOpenSettings, onDisconnect }: Pick<Props, "onOpenSetting
         cursor: "pointer",
         fontFamily: "inherit",
       }}
-      onMouseEnter={e => (e.currentTarget.style.background = "var(--dash-card-bg-2)")}
-      onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
     >
       {label}
     </button>
