@@ -136,7 +136,7 @@ body {
 
 /* ── Dashboard theme tokens ──────────────────────── */
 :root {
-  --dash-bg:            #0B0E11;
+  --dash-bg:            #111827;
   --dash-ticker-bg:     #0F1318;
   --dash-card-bg:       #151A21;
   --dash-card-bg-2:     #1C2129;
