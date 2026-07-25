@@ -41,8 +41,9 @@ export default function MarketHeatmap({ readings }: Props) {
         border: "1px solid var(--dash-border)",
         borderRadius: 8,
         overflow: "hidden",
-        minHeight: 150,
         width: "100%",
+        flex: 1,
+        alignContent: "stretch",
       }}
     >
       {source.map(r => (

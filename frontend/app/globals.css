@@ -165,6 +165,28 @@ body {
   background: var(--dash-bg);
 }
 
+.dashboard-root {
+  height: 100vh;
+  height: 100dvh;
+}
+
+.settings-screen {
+  height: 100vh;
+  height: 100dvh;
+  overflow: auto;
+}
+
+@media (max-width: 900px) {
+  .dashboard-root {
+    height: auto;
+  }
+  .settings-screen {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+}
+
 html, body {
   overflow: hidden;
 }
@@ -398,21 +420,13 @@ html, body {
   .dash-card {
     min-width: 0;
   }
-  /* max-height (not height) caps how tall the panel gets when it grows to
-     fill leftover space (flex-grow below) — this only works because BotLog
-     is wired up with flex:1/minHeight:0 rather than height:100%; a
-     percentage height doesn't resolve against an auto-height ancestor no
-     matter what max-height says, but the flex algorithm handles a
-     max-height-clamped flex container correctly regardless. flex-grow:1
-     lets this panel absorb any space left over below it in .dash-body
-     (e.g. when the rest of the page's real content is shorter than the
-     viewport) instead of leaving it as bare background below the card —
-     BotLog's own internal list still scrolls/centers within whatever
-     height that ends up being. */
+  /* Let the chat column size to its content up to the max-height cap, rather
+     than stretching to absorb leftover viewport space. The main column already
+     grows with flex:1, so this prevents a tall, empty Bot Activity card from
+     leaving extra space inside it on large phones when the log is short. */
   .dash-chat-col {
     width: 100% !important;
-    flex-shrink: 1 !important;
-    flex-grow: 1 !important;
+    flex: 0 0 auto !important;
     max-height: 420px !important;
     padding: 0 14px 14px !important;
   }

@@ -112,7 +112,7 @@ export default function App() {
 
   if (screen === "settings") {
     return (
-      <div className="full-viewport dark-scroll" style={{ overflowY: "auto", background: "var(--dash-bg)", color: "var(--dash-text)" }}>
+      <div className="settings-screen" style={{ overflow: "auto", background: "var(--dash-bg)", color: "var(--dash-text)" }}>
         <div style={{ maxWidth: 760, margin: "0 auto", padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
           <button
             onClick={() => setScreen("dashboard")}

@@ -94,10 +94,10 @@ export default function Dashboard(props: Props) {
 
   return (
     <div
+      className="dashboard-root"
       style={{
         display: "flex",
         flexDirection: "column",
-        height: "100%",
         background: "var(--dash-bg)",
         color: "var(--dash-text)",
       }}
@@ -126,6 +126,7 @@ export default function Dashboard(props: Props) {
           style={{
             flex: 1,
             minWidth: 0,
+            minHeight: 0,
             display: "flex",
             flexDirection: "column",
             padding: 14,
@@ -192,8 +193,11 @@ export default function Dashboard(props: Props) {
               })}
               {/* Grows to absorb whatever's left on its line — a full row to
                   itself if the personas above filled evenly, or the tail end
-                  of the last persona row otherwise. */}
-              <div style={{ flex: "3 1 320px", minWidth: 0 }}>
+                  of the last persona row otherwise. Stretches (row default)
+                  to match the taller persona cards; MarketHeatmap fills that
+                  stretched height itself so the tiles reach all the way down
+                  instead of leaving bare background below them. */}
+              <div style={{ flex: "3 1 320px", minWidth: 0, display: "flex" }}>
                 <MarketHeatmap readings={props.marketReadings} />
               </div>
             </div>
