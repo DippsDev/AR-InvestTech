@@ -371,14 +371,15 @@ class BotBridge:
 
         import config as _cfg
         import MetaTrader5 as mt5
-        from multi_symbol_targets import SB_TARGETS, TL_TARGETS
+        from multi_symbol_targets import MB_TARGETS, SB_TARGETS, TL_TARGETS
 
-        # One reading per configured instance (a symbol traded by both
-        # strategies, e.g. DE30m, appears twice — once per strategy — since
-        # each has its own independent adapter/position/risk on it).
+        # One reading per configured instance (a symbol traded by several
+        # strategies, e.g. DE30m or USDJPYm, appears once per strategy — each
+        # has its own independent adapter/position/risk on it).
         active_symbols = []
         any_market_open = False
-        for strategy, targets in (("SB", SB_TARGETS), ("TL", TL_TARGETS)):
+        mb_targets = MB_TARGETS if getattr(_cfg, "MB_ENABLED", False) else {}
+        for strategy, targets in (("SB", SB_TARGETS), ("TL", TL_TARGETS), ("MB", mb_targets)):
             for symbol in targets:
                 entry = {"symbol": symbol, "strategy": strategy, "price": None, "market_open": False}
                 if self._mt5_ok:
@@ -455,7 +456,8 @@ class BotBridge:
             import MetaTrader5 as mt5
             from silver_bullet.live_adapter import SB_MAGIC
             from trendline.live_adapter import TL_MAGIC
-            magics = (SB_MAGIC, TL_MAGIC)
+            from mutanabby.live_adapter import MB_MAGIC
+            magics = (SB_MAGIC, TL_MAGIC, MB_MAGIC)
             return [p for p in (mt5.positions_get() or []) if p.magic in magics]
         except Exception:
             return []
@@ -482,8 +484,9 @@ class BotBridge:
             import MetaTrader5 as mt5
             from silver_bullet.live_adapter import SB_MAGIC
             from trendline.live_adapter import TL_MAGIC
+            from mutanabby.live_adapter import MB_MAGIC
             from src.ticket_store import load_tickets
-            magics = (SB_MAGIC, TL_MAGIC)
+            magics = (SB_MAGIC, TL_MAGIC, MB_MAGIC)
             from_dt = datetime.now() - timedelta(days=30)
             # Some broker trade servers (e.g. AtlasFunded-Server) timestamp
             # deals several hours ahead of true UTC. Padding the upper bound
