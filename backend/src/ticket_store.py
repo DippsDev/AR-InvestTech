@@ -6,9 +6,9 @@ bot's trades against MT5 history by magic number alone. This module gives
 callers a broker-independent fallback: every ticket the bot itself confirms
 opening is recorded here (tagged with which strategy opened it), and
 history lookups can match against that set instead of (or in addition to)
-magic. `load_tickets(strategy=...)` lets Silver Bullet's and Trendline's own
-daily circuit breakers each see only their own tickets even when magic is
-unreliable; `load_tickets()` with no filter (used by the dashboard's
+magic. `load_tickets(strategy=...)` lets Silver Bullet's, Trendline's and
+Mutanabby's own daily circuit breakers each see only their own tickets even
+when magic is unreliable; `load_tickets()` with no filter (used by the dashboard's
 combined trade history) returns everything regardless of strategy or
 entry format (old plain-timestamp entries included).
 """
@@ -40,7 +40,7 @@ def _load_raw() -> dict:
 
 def record_ticket(ticket: int, strategy: str | None = None) -> None:
     """Record that the bot opened `ticket`, optionally tagged with which
-    strategy ("SB" or "TL") opened it. Safe to call from any thread."""
+    strategy ("SB", "TL" or "MB") opened it. Safe to call from any thread."""
     with _LOCK:
         data = _load_raw()
         data[str(ticket)] = {

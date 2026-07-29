@@ -29,3 +29,27 @@ TL_TARGETS: dict[str, dict[str, float]] = {
     "USTECm":  dict(obstruction_tolerance_points=2.640964, breach_tolerance_points=4.401606,
                      touch_tolerance_points=2.640964, stop_buffer_points=4.401606, min_risk_points=13.204819),
 }
+
+# symbol -> MutanabbyConfig field overrides
+#
+# Chosen from the 12-symbol H1 breadth run in backend/mutanabby/README.md.
+# US30m had the best profit factor overall (1.60); JP225m and USDJPYm (both
+# 1.37) are the strongest of the ten instruments that took no part in choosing
+# these parameters, so their results carry no selection bias.
+#
+# Unlike SB_TARGETS/TL_TARGETS there are no per-symbol threshold overrides to
+# compute here: Mutanabby's stop is ATR-derived and therefore already scales
+# itself to each instrument's volatility. Every symbol gets the same settings,
+# and they are identical across symbols on purpose — a per-symbol tuning pass
+# on ~56 trades apiece would be fitting noise.
+#
+# sensitivity 6.0 (not the indicator's own default of 4.0) sits at the peak of
+# a broad 5.0-7.0 ridge; rr 2.0 is the middle of the three TP rungs the
+# indicator draws. Everything else stays at MutanabbyConfig's chart-faithful
+# defaults, including no breakeven and no trailing stop — that is the exact
+# configuration the reported profit factors were measured with.
+MB_TARGETS: dict[str, dict[str, float]] = {
+    "US30m":   dict(sensitivity=6.0, rr=2.0),
+    "JP225m":  dict(sensitivity=6.0, rr=2.0),
+    "USDJPYm": dict(sensitivity=6.0, rr=2.0),
+}

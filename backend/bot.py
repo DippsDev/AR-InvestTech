@@ -1,11 +1,12 @@
 """
 AR Investments — Silver Bullet Bot
-Strategy: ICT Silver Bullet + Trendline, each run concurrently across their
-          own top-3 symbols (see multi_symbol_targets.py) rather than a
-          single shared US30 instrument.
+Strategy: ICT Silver Bullet + Trendline + Mutanabby, each run concurrently
+          across their own top-3 symbols (see multi_symbol_targets.py) rather
+          than a single shared US30 instrument.
 Risk    : SB_RISK_PCT / TL_RISK_PCT each divided evenly across all running
-          instances, so total account risk stays roughly what one pair used
-          to risk on US30 alone.
+          SB+TL instances, so total account risk stays roughly what one pair
+          used to risk on US30 alone. MB_RISK_PCT is divided across MB
+          instances ONLY — see _instance_count below for why.
 """
 import time
 from dataclasses import replace as _dc_replace
@@ -15,7 +16,9 @@ from silver_bullet.config import SilverBulletConfig
 from silver_bullet.live_adapter import SilverBulletLiveAdapter
 from trendline.config import TrendlineConfig
 from trendline.live_adapter import TrendlineLiveAdapter
-from multi_symbol_targets import SB_TARGETS, TL_TARGETS
+from mutanabby.config import MutanabbyConfig
+from mutanabby.live_adapter import MutanabbyLiveAdapter
+from multi_symbol_targets import MB_TARGETS, SB_TARGETS, TL_TARGETS
 from src.data_collector import (
     connect_mt5,
     disconnect_mt5,
@@ -57,11 +60,26 @@ class SilverBulletBot:
         base_tl_cfg.skip_news_days = config.TL_NEWS
         self.base_tl_cfg = base_tl_cfg
 
-        # Total concurrent instances across both strategies — each instance's
-        # risk % is its strategy's configured risk_pct divided by this count,
-        # so running many symbols at once doesn't multiply total account risk.
+        self.mb_enabled = config.MB_ENABLED
+        base_mb_cfg = MutanabbyConfig()
+        base_mb_cfg.skip_news_days = config.MB_NEWS
+        self.base_mb_cfg = base_mb_cfg
+
+        # Total concurrent SB+TL instances — each instance's risk % is its
+        # strategy's configured risk_pct divided by this count, so running many
+        # symbols at once doesn't multiply total account risk.
+        #
+        # Mutanabby is deliberately EXCLUDED from this divisor and gets its own
+        # (below). Including it would silently shrink every SB and TL position:
+        # with 3 SB + 3 TL the divisor is 6, and adding 3 MB instances would
+        # push it to 9, cutting SB/TL per-instance risk by a third. MB's
+        # evidence is much weaker than theirs (see mutanabby/README.md), so it
+        # funds itself out of MB_RISK_PCT rather than out of their budget.
+        # Enabling MB therefore ADDS at most MB_RISK_PCT of account risk — keep
+        # that number small.
         total_instances = len(SB_TARGETS) + (len(TL_TARGETS) if self.tl_enabled else 0)
         self._instance_count = max(1, total_instances)
+        self._mb_instance_count = max(1, len(MB_TARGETS)) if self.mb_enabled else 1
 
         # symbol -> adapter, one instance per top-3 target (see
         # multi_symbol_targets.py). Each gets its own volatility-scaled
@@ -80,6 +98,15 @@ class SilverBulletBot:
                 cfg = _dc_replace(base_tl_cfg, symbol=symbol, **overrides)
                 risk_share = config.TL_RISK_PCT / self._instance_count
                 self.tl_adapters[symbol] = TrendlineLiveAdapter(
+                    cfg, symbol=symbol, risk_pct_override=risk_share
+                )
+
+        self.mb_adapters: dict[str, MutanabbyLiveAdapter] = {}
+        if self.mb_enabled:
+            for symbol, overrides in MB_TARGETS.items():
+                cfg = _dc_replace(base_mb_cfg, symbol=symbol, **overrides)
+                risk_share = config.MB_RISK_PCT / self._mb_instance_count
+                self.mb_adapters[symbol] = MutanabbyLiveAdapter(
                     cfg, symbol=symbol, risk_pct_override=risk_share
                 )
 
@@ -123,7 +150,14 @@ class SilverBulletBot:
             else:
                 self._log_connection_diagnostics("TL", symbol)
 
-        if not self.sb_adapters and not self.tl_adapters:
+        for symbol in list(self.mb_adapters):
+            if mt5.symbol_info(symbol) is None:
+                logger.error(f"[MB] Symbol {symbol} not found on this broker — dropping instance")
+                del self.mb_adapters[symbol]
+            else:
+                self._log_connection_diagnostics("MB", symbol)
+
+        if not self.sb_adapters and not self.tl_adapters and not self.mb_adapters:
             logger.error("No configured symbols resolved on this broker — nothing to trade")
             return False
 
@@ -138,10 +172,19 @@ class SilverBulletBot:
         self.running = True
         sb_syms = ", ".join(self.sb_adapters) or "(none)"
         tl_syms = ", ".join(self.tl_adapters) or "(none)"
+        mb_syms = ", ".join(self.mb_adapters) or "(none)"
         logger.info(
             f"Bot ready | SB symbols: {sb_syms} | TL symbols: {tl_syms} | "
-            f"risk split across {self._instance_count} instances"
+            f"MB symbols: {mb_syms} | SB/TL risk split across "
+            f"{self._instance_count} instances"
         )
+        if self.mb_adapters:
+            logger.info(
+                f"[MB] Mutanabby live | {len(self.mb_adapters)} instance(s) | "
+                f"{config.MB_RISK_PCT:.2f}% risk split across them "
+                f"({config.MB_RISK_PCT / self._mb_instance_count:.3f}% each) | "
+                f"separate budget — SB/TL sizing unchanged"
+            )
         return True
 
     def _log_connection_diagnostics(self, label: str, symbol: str) -> None:
@@ -174,11 +217,19 @@ class SilverBulletBot:
                 # MT5-history-derived trade count with all the others so each
                 # can tell whether the combined total is behind pace for
                 # today (see SilverBulletLiveAdapter._boost_active).
+                # MB is included in the combined count so the floor reflects
+                # real activity, but MB itself has no boost mode to trigger —
+                # its only entry knob is `sensitivity`, and changing that
+                # produces different signals rather than admitting marginal
+                # ones (see mutanabby/live_adapter.py).
                 combined_trades = sum(a._daily_trades for a in self.sb_adapters.values())
                 combined_trades += sum(a._daily_trades for a in self.tl_adapters.values())
+                combined_trades += sum(a._daily_trades for a in self.mb_adapters.values())
                 for a in self.sb_adapters.values():
                     a.combined_daily_trades = combined_trades
                 for a in self.tl_adapters.values():
+                    a.combined_daily_trades = combined_trades
+                for a in self.mb_adapters.values():
                     a.combined_daily_trades = combined_trades
 
                 for symbol, adapter in self.sb_adapters.items():
@@ -191,6 +242,11 @@ class SilverBulletBot:
                         adapter.cycle(symbol)
                     except Exception as exc:
                         logger.error(f"[TL] Error in {symbol} cycle: {exc}", exc_info=True)
+                for symbol, adapter in self.mb_adapters.items():
+                    try:
+                        adapter.cycle(symbol)
+                    except Exception as exc:
+                        logger.error(f"[MB] Error in {symbol} cycle: {exc}", exc_info=True)
                 # 5-second sleep with a 1-second heartbeat so the log shows
                 # the bot is alive at every second.
                 for remaining in range(5, 0, -1):
@@ -208,6 +264,8 @@ class SilverBulletBot:
         for symbol, adapter in self.sb_adapters.items():
             adapter.shutdown(symbol)
         for symbol, adapter in self.tl_adapters.items():
+            adapter.shutdown(symbol)
+        for symbol, adapter in self.mb_adapters.items():
             adapter.shutdown(symbol)
         if not self._gui_mode:
             disconnect_mt5()

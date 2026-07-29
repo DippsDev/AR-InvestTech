@@ -153,6 +153,61 @@ except ValueError:
 
 TL_NEWS = os.getenv("TL_NEWS", "true").lower() == "true"
 
+# ---------------------------------------------------------------------------
+# Mutanabby (MB) — SuperTrend flip strategy, H1
+# ---------------------------------------------------------------------------
+# Ported from the TradingView "Ultimate Algo" indicator; see
+# backend/mutanabby/README.md for the full evidence write-up. Runs alongside
+# Silver Bullet and Trendline in the same process, fully independent (own magic
+# number, own risk budget). Off by default so existing installs are unaffected.
+#
+# RISK NOTE: the backtest support for this strategy is materially weaker than
+# for SB or TL — median profit factor 1.215 across 12 instruments on only ~56
+# trades each, versus SB's 2.27 on US30. MB_RISK_PCT therefore defaults to a
+# deliberately small 0.25%, and MB draws from its OWN budget so enabling it can
+# never reduce what SB and TL are risking (see bot.py's instance-count split).
+MB_SYMBOL  = os.getenv("MB_SYMBOL", "US30m")
+MB_ENABLED = os.getenv("MB_ENABLED", "false").lower() == "true"
+
+try:
+    MB_RISK_PCT = float(os.getenv("MB_RISK_PCT", "0.25"))
+except ValueError:
+    MB_RISK_PCT = 0.25
+
+try:
+    MB_MIN_BALANCE = float(os.getenv("MB_MIN_BALANCE", "15.0"))
+except ValueError:
+    MB_MIN_BALANCE = 15.0
+
+try:
+    MB_MAX_RISK_USD = float(os.getenv("MB_MAX_RISK_USD", "1.0"))
+except ValueError:
+    MB_MAX_RISK_USD = 1.0
+
+try:
+    MB_SMALL_ACCT_THRESHOLD = float(os.getenv("MB_SMALL_ACCT_THRESHOLD", "150.0"))
+except ValueError:
+    MB_SMALL_ACCT_THRESHOLD = 150.0
+
+try:
+    MB_MAX_DRAWDOWN_PCT = float(os.getenv("MB_MAX_DRAWDOWN_PCT", "50.0"))
+except ValueError:
+    MB_MAX_DRAWDOWN_PCT = 50.0
+
+try:
+    MB_DAILY_LOSS_LIMIT_USD = float(os.getenv("MB_DAILY_LOSS_LIMIT_USD", "10.0"))
+except ValueError:
+    MB_DAILY_LOSS_LIMIT_USD = 10.0
+
+# H1 signals arrive roughly once a day per instrument, so this cap is a
+# safety valve against a runaway loop rather than a routine throttle.
+try:
+    MB_MAX_TRADES_PER_DAY = int(os.getenv("MB_MAX_TRADES_PER_DAY", "3"))
+except ValueError:
+    MB_MAX_TRADES_PER_DAY = 3
+
+MB_NEWS = os.getenv("MB_NEWS", "true").lower() == "true"
+
 # Adaptive daily-trade floor: if by this NY time the combined SB+TL trade
 # count today is still below DAILY_TRADE_FLOOR, both adapters relax their
 # entry filters (smaller min risk / wider tolerances) for the rest of the
