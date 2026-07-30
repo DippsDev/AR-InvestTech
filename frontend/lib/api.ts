@@ -2,8 +2,15 @@ import { getConnection } from "./connection";
 import type { CalendarEvent } from "./dashboardData";
 
 // Every call reads the connection fresh (never cached at module scope) and
-// attaches the API token header if one is set (the backend doesn't currently
-// enforce it, but sending it is harmless and future-proofs against it doing so).
+// attaches the API token header if one is set.
+//
+// The backend DOES enforce this token: server.py registers _require_token as an
+// app-wide dependency, so whenever backend/.env sets API_TOKEN every route
+// except /health, /docs, /openapi.json and /redoc rejects a request without a
+// matching X-API-Token. That includes /license/validate, which is the very
+// first call the Activation screen makes — hence the dedicated 401 message
+// below, since a bare "401" there reads as a bad license key rather than a
+// missing token.
 async function req(path: string, init?: RequestInit): Promise<Response> {
   const { baseUrl, token } = getConnection();
   const headers: Record<string, string> = {
@@ -20,6 +27,13 @@ async function req(path: string, init?: RequestInit): Promise<Response> {
     throw new Error(`Backend not reachable at ${baseUrl || "(no URL set)"} — check the Backend URL in Settings.`);
   }
   if (!r.ok) {
+    if (r.status === 401) {
+      throw new Error(
+        token
+          ? "Backend rejected your credential. Re-activate with your license key, or paste API_TOKEN from the backend's .env into the API Token field."
+          : "Not activated on this backend. Enter your license key on the Activation screen to connect.",
+      );
+    }
     throw new Error(`Backend returned ${r.status} for ${path}.`);
   }
   return r;

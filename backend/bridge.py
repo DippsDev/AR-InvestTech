@@ -4,6 +4,7 @@ Handles license validation, MT5 connection, bot lifecycle, and live data.
 """
 from __future__ import annotations
 
+import json
 import logging
 import threading
 import time
@@ -93,6 +94,14 @@ class _BotLogHandler(logging.Handler):
 # ── Bridge ───────────────────────────────────────────────────────────────────
 
 class BotBridge:
+    # Supervisor cadence, and the escalating delay before retrying a bot
+    # that died during start-up. The escalation matters because a permanent
+    # failure (e.g. no configured symbol resolves on this broker) makes
+    # SilverBulletBot.run() return immediately — a fixed short retry would
+    # then spin, hammering the broker and filling the log.
+    _SUPERVISOR_INTERVAL_S = 30
+    _RESTART_BACKOFF_S = (30, 60, 120, 300)
+
     def __init__(self) -> None:
         self._bot = None
         self._bot_thread: Optional[threading.Thread] = None
@@ -105,6 +114,146 @@ class BotBridge:
         self._graded_ids: set[str] = set()
         self._graded_seeded = False
 
+        # Lifecycle state. `_desired_running` is the operator's intent and
+        # outlives the process; `_bot_running` is what is actually happening
+        # right now. The supervisor's whole job is closing the gap between
+        # the two after a crash, reboot or broker disconnect.
+        self._lifecycle_lock = threading.RLock()
+        self._desired_running = self._load_desired_running()
+        self._supervisor_thread: Optional[threading.Thread] = None
+        self._supervisor_stop = threading.Event()
+        self._restart_failures = 0
+        self._next_restart_at = 0.0
+
+    # ── Desired-state persistence ────────────────────────────────────────────
+
+    def _load_desired_running(self) -> bool:
+        """Read the persisted 'should the bot be trading?' flag.
+
+        Defaults to False: if the state file is missing or corrupt, not
+        trading is the safe assumption — silently opening positions on a
+        machine whose intent we can't read is far worse than staying idle
+        until somebody presses the button.
+        """
+        try:
+            with open(config.BOT_STATE_FILE, encoding="utf-8") as fh:
+                return bool(json.load(fh).get("desired_running", False))
+        except (OSError, json.JSONDecodeError, AttributeError):
+            return False
+
+    def set_desired_running(self, value: bool) -> None:
+        """Persist the operator's intent so a restart resumes it."""
+        self._desired_running = value
+        try:
+            payload = {
+                "desired_running": value,
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+            with open(config.BOT_STATE_FILE, "w", encoding="utf-8") as fh:
+                json.dump(payload, fh)
+        except OSError as exc:
+            # Non-fatal: the bot still starts/stops correctly for this
+            # process, it just won't survive a restart. Say so rather than
+            # letting the user believe the VPS will resume on its own.
+            self._add_log("[WARN]", "warn", f"Could not persist run state: {exc}", speaker="Boss")
+
+    # ── Startup / shutdown ───────────────────────────────────────────────────
+
+    def resume_on_startup(self) -> None:
+        """Restore MT5 and the bot to their intended state, then supervise.
+
+        Called from the FastAPI lifespan hook so an unattended VPS comes
+        back on its own after a reboot or a service restart.
+        """
+        result = self.connect_mt5()
+        if not result.get("ok"):
+            self._add_log("[MT5]", "warn", f"Startup connect failed: {result.get('error', 'unknown')}", speaker="Boss")
+
+        if self._desired_running:
+            self._add_log("[START]", "sig", "Resuming bot — run state was active before restart", speaker="Boss")
+            try:
+                self._start_bot()
+            except Exception as exc:
+                self._add_log("[ERR]", "warn", f"Resume failed: {exc}", speaker="Boss")
+
+        self._supervisor_stop.clear()
+        self._supervisor_thread = threading.Thread(
+            target=self._supervise, name="ar-supervisor", daemon=True
+        )
+        self._supervisor_thread.start()
+
+    def shutdown(self) -> None:
+        """Stop supervising. Deliberately leaves `_desired_running` alone so
+        the next start resumes; and deliberately does not stop the bot, whose
+        own shutdown path closes open positions (see live_adapter.shutdown) —
+        a process restart must not liquidate the account."""
+        self._supervisor_stop.set()
+        if self._supervisor_thread:
+            self._supervisor_thread.join(timeout=5)
+
+    # ── Supervisor ───────────────────────────────────────────────────────────
+
+    def _mt5_healthy(self) -> bool:
+        try:
+            import MetaTrader5 as mt5
+            return mt5.account_info() is not None
+        except Exception:
+            return False
+
+    def _supervise(self) -> None:
+        """Keep reality matching `_desired_running`.
+
+        Two failure modes, handled differently on purpose:
+
+        * The bot thread died — restart it, with backoff. It already ran its
+          own shutdown on the way out, so there is nothing to preserve.
+        * MT5 dropped while the bot is alive — re-establish the connection
+          *in place*. It is tempting to just restart the bot, but
+          SilverBulletBot._shutdown() closes every open position, so a
+          transient broker disconnect would liquidate live trades. The
+          adapters call the mt5 module directly, so restoring the
+          process-level connection is enough for their next cycle to work.
+        """
+        while not self._supervisor_stop.is_set():
+            self._supervisor_stop.wait(self._SUPERVISOR_INTERVAL_S)
+            if self._supervisor_stop.is_set():
+                break
+            try:
+                self._supervise_once()
+            except Exception as exc:
+                self._add_log("[ERR]", "warn", f"Supervisor error: {exc}", speaker="Boss")
+
+    def _supervise_once(self) -> None:
+        with self._lifecycle_lock:
+            healthy = self._mt5_healthy()
+            if not healthy and self._mt5_ok:
+                self._mt5_ok = False
+                self._add_log("[MT5]", "warn", "Connection lost — reconnecting", speaker="Boss")
+
+            if not self._desired_running:
+                if not healthy:
+                    self.connect_mt5()  # keep dashboard stats alive while idle
+                return
+
+            if self._is_running():
+                if not healthy:
+                    self.connect_mt5()  # in place: never restart a live bot
+                return
+
+            # Desired running, but the thread is gone.
+            now = time.time()
+            if now < self._next_restart_at:
+                return
+            delay = self._RESTART_BACKOFF_S[min(self._restart_failures, len(self._RESTART_BACKOFF_S) - 1)]
+            self._restart_failures += 1
+            self._next_restart_at = now + delay
+            self._add_log(
+                "[RESTART]", "warn",
+                f"Bot not running but should be — restarting (attempt {self._restart_failures})",
+                speaker="Boss",
+            )
+            self._start_bot(persist=False)
+
     # ── License ──────────────────────────────────────────────────────────────
 
     def check_license(self) -> dict:
@@ -113,6 +262,23 @@ class BotBridge:
         key = LICENSE_FILE.read_text().strip()
         valid = key.startswith("ARB-") and len(key) == 18
         return {"ok": valid, "key": key if valid else ""}
+
+    def activated_license_key(self) -> str:
+        """The license key this machine has activated, or "" if none.
+
+        Used by server.py's auth guard so the key the operator already types on
+        the Activation screen doubles as the API credential, instead of making
+        them paste a second secret out of .env. See _require_token there for
+        why the guard still refuses to bootstrap once a key IS stored.
+        """
+        try:
+            info = self.check_license()
+        except OSError:
+            # Unreadable license file must fail closed: returning "" here means
+            # the guard falls back to requiring API_TOKEN rather than silently
+            # accepting anything.
+            return ""
+        return info.get("key", "") if info.get("ok") else ""
 
     def validate_license(self, key: str) -> dict:
         key = str(key).strip().upper()
@@ -235,25 +401,46 @@ class BotBridge:
 
     # ── Bot lifecycle ─────────────────────────────────────────────────────────
 
-    def _start_bot(self) -> None:
+    def _start_bot(self, persist: bool = True) -> None:
+        """Start the bot thread.
+
+        `persist=False` is used by the supervisor, which is *acting on* the
+        already-recorded intent rather than expressing a new one — rewriting
+        the state file on every automatic retry would be pointless churn.
+        """
         from bot import SilverBulletBot
-        self._bot = SilverBulletBot(gui_mode=True)
-        log = logging.getLogger("silver_bullet_bot")
-        self._log_handler = _BotLogHandler(self)
-        log.addHandler(self._log_handler)
-        self._bot_thread = threading.Thread(target=self._bot.run, daemon=True)
-        self._bot_thread.start()
-        self._bot_running = True
-        self._start_time = time.time()
+        with self._lifecycle_lock:
+            if persist:
+                self.set_desired_running(True)
+                # An explicit start is a clean slate: don't make the user
+                # wait out a backoff accumulated by earlier auto-retries.
+                self._restart_failures = 0
+                self._next_restart_at = 0.0
+
+            self._bot = SilverBulletBot(gui_mode=True)
+            log = logging.getLogger("silver_bullet_bot")
+            # Drop any handler left over from a previous run before adding a
+            # new one — otherwise every restart adds another handler and the
+            # dashboard feed shows each line twice, three times, four...
+            if self._log_handler:
+                log.removeHandler(self._log_handler)
+            self._log_handler = _BotLogHandler(self)
+            log.addHandler(self._log_handler)
+            self._bot_thread = threading.Thread(target=self._bot.run, daemon=True)
+            self._bot_thread.start()
+            self._bot_running = True
+            self._start_time = time.time()
         self._add_log("[START]", "win", "Bot started · scanning US30 for Silver Bullet setups", speaker="Boss")
 
     def _stop_bot(self) -> None:
-        if self._bot:
-            self._bot.running = False
-        self._bot_running = False
-        if self._log_handler:
-            logging.getLogger("silver_bullet_bot").removeHandler(self._log_handler)
-            self._log_handler = None
+        with self._lifecycle_lock:
+            self.set_desired_running(False)
+            if self._bot:
+                self._bot.running = False
+            self._bot_running = False
+            if self._log_handler:
+                logging.getLogger("silver_bullet_bot").removeHandler(self._log_handler)
+                self._log_handler = None
         self._add_log("[STOP]", "inf", "Bot stopped by user · positions held open", speaker="Boss")
 
     def _is_running(self) -> bool:
@@ -268,18 +455,29 @@ class BotBridge:
         bot until it's restarted. Joining the old thread here (unlike
         _stop_bot, which leaves it running in the background) avoids two
         overlapping bot loops / MT5 connections for the duration of a
-        naive stop-then-start."""
-        if self._is_running():
-            if self._bot:
-                self._bot.running = False
-            if self._bot_thread:
-                self._bot_thread.join(timeout=15)
-            self._bot_running = False
-            if self._log_handler:
-                logging.getLogger("silver_bullet_bot").removeHandler(self._log_handler)
-                self._log_handler = None
-        self._add_log("[RESTART]", "sig", "Bot restarting to apply updated settings...", speaker="Boss")
-        self._start_bot()
+        naive stop-then-start.
+
+        NOTE: joining the old thread runs SilverBulletBot._shutdown(), which
+        closes every open position and cancels pending orders. A restart is
+        therefore not a transparent operation on a live account — hence the
+        explicit warning in the feed below."""
+        with self._lifecycle_lock:
+            if self._is_running():
+                if self._bot:
+                    self._bot.running = False
+                self._add_log(
+                    "[RESTART]", "warn",
+                    "Applying settings — open positions will be closed and pending orders cancelled",
+                    speaker="Boss",
+                )
+                if self._bot_thread:
+                    self._bot_thread.join(timeout=15)
+                self._bot_running = False
+                if self._log_handler:
+                    logging.getLogger("silver_bullet_bot").removeHandler(self._log_handler)
+                    self._log_handler = None
+            self._add_log("[RESTART]", "sig", "Bot restarting to apply updated settings...", speaker="Boss")
+            self._start_bot()
 
     # ── Live stats ────────────────────────────────────────────────────────────
 
@@ -371,14 +569,15 @@ class BotBridge:
 
         import config as _cfg
         import MetaTrader5 as mt5
-        from multi_symbol_targets import SB_TARGETS, TL_TARGETS
+        from multi_symbol_targets import MB_TARGETS, SB_TARGETS, TL_TARGETS
 
-        # One reading per configured instance (a symbol traded by both
-        # strategies, e.g. DE30m, appears twice — once per strategy — since
-        # each has its own independent adapter/position/risk on it).
+        # One reading per configured instance (a symbol traded by several
+        # strategies, e.g. DE30m or USDJPYm, appears once per strategy — each
+        # has its own independent adapter/position/risk on it).
         active_symbols = []
         any_market_open = False
-        for strategy, targets in (("SB", SB_TARGETS), ("TL", TL_TARGETS)):
+        mb_targets = MB_TARGETS if getattr(_cfg, "MB_ENABLED", False) else {}
+        for strategy, targets in (("SB", SB_TARGETS), ("TL", TL_TARGETS), ("MB", mb_targets)):
             for symbol in targets:
                 entry = {"symbol": symbol, "strategy": strategy, "price": None, "market_open": False}
                 if self._mt5_ok:
@@ -455,7 +654,8 @@ class BotBridge:
             import MetaTrader5 as mt5
             from silver_bullet.live_adapter import SB_MAGIC
             from trendline.live_adapter import TL_MAGIC
-            magics = (SB_MAGIC, TL_MAGIC)
+            from mutanabby.live_adapter import MB_MAGIC
+            magics = (SB_MAGIC, TL_MAGIC, MB_MAGIC)
             return [p for p in (mt5.positions_get() or []) if p.magic in magics]
         except Exception:
             return []
@@ -482,8 +682,9 @@ class BotBridge:
             import MetaTrader5 as mt5
             from silver_bullet.live_adapter import SB_MAGIC
             from trendline.live_adapter import TL_MAGIC
+            from mutanabby.live_adapter import MB_MAGIC
             from src.ticket_store import load_tickets
-            magics = (SB_MAGIC, TL_MAGIC)
+            magics = (SB_MAGIC, TL_MAGIC, MB_MAGIC)
             from_dt = datetime.now() - timedelta(days=30)
             # Some broker trade servers (e.g. AtlasFunded-Server) timestamp
             # deals several hours ahead of true UTC. Padding the upper bound

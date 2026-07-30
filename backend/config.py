@@ -29,6 +29,38 @@ MT5_PATH     = os.getenv("MT5_PATH", "")
 SUPABASE_URL          = os.getenv("SUPABASE_URL", "").strip()
 SUPABASE_SERVICE_KEY  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
 
+# ── API surface ────────────────────────────────────────────────────────────
+# Shared secret required by every REST route (see server.py). Enforced only
+# when non-empty, so a purely-local dev setup keeps working untouched; the
+# moment the server is exposed through a tunnel this MUST be set, because
+# the routes can read the MT5 login, start/stop live trading, and overwrite
+# the MT5 password.
+API_TOKEN = os.getenv("API_TOKEN", "").strip()
+
+# Interface to bind. Defaults to loopback: the intended deployment puts a
+# Cloudflare tunnel (or the control plane) in front, and both reach the
+# server over 127.0.0.1. Set AR_BIND_HOST=0.0.0.0 only to expose it
+# directly on a trusted LAN.
+BIND_HOST = os.getenv("AR_BIND_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+try:
+    BIND_PORT = int(os.getenv("AR_BIND_PORT", "8000"))
+except ValueError:
+    BIND_PORT = 8000
+
+# Browser origins allowed to call this API. Comma-separated; "*" allows any.
+CORS_ORIGINS = [
+    o.strip() for o in os.getenv(
+        "AR_CORS_ORIGINS",
+        "https://ar-invest-tech.vercel.app,http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",") if o.strip()
+]
+
+# Desired-run-state file: records whether the operator wants the bot
+# trading, so a VPS reboot or service restart resumes instead of silently
+# leaving the account unmanaged. See bridge.py.
+BOT_STATE_FILE = str(paths.app_data_dir() / "bot_state.json")
+
 # News Analyst — shadow-mode daily directional bias (see news_analyst.py).
 # Purely observational: logs a bias call once per NY trading day for later
 # evaluation. Never gates or sizes real trades. Disabled entirely (no API
@@ -153,6 +185,61 @@ except ValueError:
 
 TL_NEWS = os.getenv("TL_NEWS", "true").lower() == "true"
 
+# ---------------------------------------------------------------------------
+# Mutanabby (MB) — SuperTrend flip strategy, H1
+# ---------------------------------------------------------------------------
+# Ported from the TradingView "Ultimate Algo" indicator; see
+# backend/mutanabby/README.md for the full evidence write-up. Runs alongside
+# Silver Bullet and Trendline in the same process, fully independent (own magic
+# number, own risk budget). Off by default so existing installs are unaffected.
+#
+# RISK NOTE: the backtest support for this strategy is materially weaker than
+# for SB or TL — median profit factor 1.215 across 12 instruments on only ~56
+# trades each, versus SB's 2.27 on US30. MB_RISK_PCT therefore defaults to a
+# deliberately small 0.25%, and MB draws from its OWN budget so enabling it can
+# never reduce what SB and TL are risking (see bot.py's instance-count split).
+MB_SYMBOL  = os.getenv("MB_SYMBOL", "US30m")
+MB_ENABLED = os.getenv("MB_ENABLED", "false").lower() == "true"
+
+try:
+    MB_RISK_PCT = float(os.getenv("MB_RISK_PCT", "0.25"))
+except ValueError:
+    MB_RISK_PCT = 0.25
+
+try:
+    MB_MIN_BALANCE = float(os.getenv("MB_MIN_BALANCE", "15.0"))
+except ValueError:
+    MB_MIN_BALANCE = 15.0
+
+try:
+    MB_MAX_RISK_USD = float(os.getenv("MB_MAX_RISK_USD", "1.0"))
+except ValueError:
+    MB_MAX_RISK_USD = 1.0
+
+try:
+    MB_SMALL_ACCT_THRESHOLD = float(os.getenv("MB_SMALL_ACCT_THRESHOLD", "150.0"))
+except ValueError:
+    MB_SMALL_ACCT_THRESHOLD = 150.0
+
+try:
+    MB_MAX_DRAWDOWN_PCT = float(os.getenv("MB_MAX_DRAWDOWN_PCT", "50.0"))
+except ValueError:
+    MB_MAX_DRAWDOWN_PCT = 50.0
+
+try:
+    MB_DAILY_LOSS_LIMIT_USD = float(os.getenv("MB_DAILY_LOSS_LIMIT_USD", "10.0"))
+except ValueError:
+    MB_DAILY_LOSS_LIMIT_USD = 10.0
+
+# H1 signals arrive roughly once a day per instrument, so this cap is a
+# safety valve against a runaway loop rather than a routine throttle.
+try:
+    MB_MAX_TRADES_PER_DAY = int(os.getenv("MB_MAX_TRADES_PER_DAY", "3"))
+except ValueError:
+    MB_MAX_TRADES_PER_DAY = 3
+
+MB_NEWS = os.getenv("MB_NEWS", "true").lower() == "true"
+
 # Adaptive daily-trade floor: if by this NY time the combined SB+TL trade
 # count today is still below DAILY_TRADE_FLOOR, both adapters relax their
 # entry filters (smaller min risk / wider tolerances) for the rest of the
@@ -164,6 +251,8 @@ except ValueError:
     DAILY_TRADE_FLOOR = 3
 DAILY_TRADE_FLOOR_TIME_ET = os.getenv("DAILY_TRADE_FLOOR_TIME_ET", "14:00")
 
-# Logging
-LOG_FILE  = str(paths.app_data_dir() / "logs" / "trades.log")
+# Logging — paths.log_dir() creates the directory, so the handler in
+# src/logger.py can open this file without a separate makedirs that would
+# otherwise resolve against whatever cwd the process happened to start in.
+LOG_FILE  = str(paths.log_dir() / "trades.log")
 LOG_LEVEL = "INFO"
