@@ -206,12 +206,16 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
               />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--dash-text-muted)", marginBottom: 5 }}>API Token (required if your backend sets one)</label>
+              {/* Usually prefilled with the license key rather than a token:
+                  Activation saves the key as the credential when this is left
+                  blank, and the backend accepts either. Clearing it here will
+                  break the connection until you re-activate. */}
+              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--dash-text-muted)", marginBottom: 5 }}>API Token (optional — defaults to your license key)</label>
               <input
                 type="text"
                 value={apiToken}
                 onChange={e => setApiToken(e.target.value)}
-                placeholder="API_TOKEN from the backend's .env"
+                placeholder="leave blank to use your license key"
                 style={{
                   width: "100%", boxSizing: "border-box",
                   border: "1px solid var(--dash-border)", borderRadius: 6,

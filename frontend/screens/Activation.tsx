@@ -62,7 +62,12 @@ export default function Activation({ onActivated, doValidate }: Props) {
     if (!key) { setError("License key is required."); return; }
     setLoading(true);
     setError("");
-    saveConnection(backendUrl, apiToken);
+    // With no explicit token, the license key itself becomes the credential:
+    // server.py's _require_token accepts either, so a single-user install never
+    // has to paste API_TOKEN out of the backend's .env. The key is saved before
+    // validating because /license/validate is only exempt from the guard on a
+    // first run — every call after activation carries this header.
+    saveConnection(backendUrl, apiToken || key);
     try {
       const res = await doValidate(key);
       if (res.ok) onActivated();
@@ -132,18 +137,17 @@ export default function Activation({ onActivated, doValidate }: Props) {
         </div>
 
         <div style={{ textAlign: "left", marginBottom: 20 }}>
-          {/* Not labelled "optional": it is only optional when the backend
-              leaves API_TOKEN unset in its .env. Whenever the backend does set
-              one — which it must for any deployment reachable off the machine —
-              every route including this screen's own /license/validate call
-              answers 401 without it, which reads as a rejected license key. */}
-          <label style={labelStyle}>API Token <span style={{ textTransform: "none", fontWeight: 400 }}>(required if your backend sets one)</span></label>
+          {/* Genuinely optional now: leaving it blank sends the license key as
+              the credential instead (see activate() above), which the backend
+              accepts. Only needed to override that with the API_TOKEN from the
+              backend's .env. */}
+          <label style={labelStyle}>API Token <span style={{ textTransform: "none", fontWeight: 400 }}>(optional — your license key is used by default)</span></label>
           <input
             type="text"
             value={apiToken}
             onChange={e => setApiToken(e.target.value)}
             onKeyDown={e => e.key === "Enter" && activate()}
-            placeholder="API_TOKEN from the backend's .env"
+            placeholder="leave blank to use your license key"
             autoCapitalize="none"
             autoCorrect="off"
             className="act-input"

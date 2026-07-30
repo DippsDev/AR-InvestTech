@@ -30,8 +30,8 @@ async function req(path: string, init?: RequestInit): Promise<Response> {
     if (r.status === 401) {
       throw new Error(
         token
-          ? "Backend rejected the API token. Check it matches API_TOKEN in the backend's .env file exactly."
-          : "This backend requires an API token. Enter the value of API_TOKEN from the backend's .env file in the API Token field.",
+          ? "Backend rejected your credential. Re-activate with your license key, or paste API_TOKEN from the backend's .env into the API Token field."
+          : "Not activated on this backend. Enter your license key on the Activation screen to connect.",
       );
     }
     throw new Error(`Backend returned ${r.status} for ${path}.`);
