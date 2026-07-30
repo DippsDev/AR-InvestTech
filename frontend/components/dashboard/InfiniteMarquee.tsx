@@ -88,13 +88,36 @@ export default function InfiniteMarquee({ items, speed = 40, gap = 24, className
 
   const loop = Array.from({ length: repeat }, () => items).flat();
 
+  // position:relative below is load-bearing, not cosmetic. The measuring copy
+  // is position:absolute, so without a positioned ancestor here its containing
+  // block resolves all the way up to the initial containing block — which means
+  // this element's own overflow:hidden does NOT clip it, and neither does any of
+  // the overflow-x:hidden chain in globals.css, because none of those boxes are
+  // in its containing block chain either. visibility:hidden still contributes to
+  // scrollable overflow, so a measuring copy several thousand pixels wide (one
+  // EventCard is 320px) made the whole document horizontally scrollable.
   return (
-    <div ref={outerRef} className={className} style={{ overflow: "hidden", minWidth: 0, ...style }}>
+    <div ref={outerRef} className={className} style={{ position: "relative", overflow: "hidden", minWidth: 0, ...style }}>
       {/* Invisible, unrepeated copy used only to measure one set's natural width. */}
       <div
         ref={sampleRef}
         aria-hidden
-        style={{ position: "absolute", visibility: "hidden", display: "flex", gap, whiteSpace: "nowrap", pointerEvents: "none" }}
+        style={{
+          position: "absolute",
+          top: 0,
+          left: 0,
+          // Now that the containing block is the (narrow) outer box, an
+          // auto-width absolute element would shrink-to-fit against it and
+          // report a container-sized measurement instead of the content's
+          // natural width. max-content pins it to the real thing; it stays
+          // clipped by the outer overflow:hidden, so it costs no layout.
+          width: "max-content",
+          visibility: "hidden",
+          display: "flex",
+          gap,
+          whiteSpace: "nowrap",
+          pointerEvents: "none",
+        }}
       >
         {items}
       </div>
