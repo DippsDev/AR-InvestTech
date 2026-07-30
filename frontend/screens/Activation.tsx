@@ -132,13 +132,18 @@ export default function Activation({ onActivated, doValidate }: Props) {
         </div>
 
         <div style={{ textAlign: "left", marginBottom: 20 }}>
-          <label style={labelStyle}>API Token <span style={{ textTransform: "none", fontWeight: 400 }}>(optional)</span></label>
+          {/* Not labelled "optional": it is only optional when the backend
+              leaves API_TOKEN unset in its .env. Whenever the backend does set
+              one — which it must for any deployment reachable off the machine —
+              every route including this screen's own /license/validate call
+              answers 401 without it, which reads as a rejected license key. */}
+          <label style={labelStyle}>API Token <span style={{ textTransform: "none", fontWeight: 400 }}>(required if your backend sets one)</span></label>
           <input
             type="text"
             value={apiToken}
             onChange={e => setApiToken(e.target.value)}
             onKeyDown={e => e.key === "Enter" && activate()}
-            placeholder="leave blank if unset"
+            placeholder="API_TOKEN from the backend's .env"
             autoCapitalize="none"
             autoCorrect="off"
             className="act-input"

@@ -206,12 +206,12 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
               />
             </div>
             <div>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--dash-text-muted)", marginBottom: 5 }}>API Token (optional)</label>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--dash-text-muted)", marginBottom: 5 }}>API Token (required if your backend sets one)</label>
               <input
                 type="text"
                 value={apiToken}
                 onChange={e => setApiToken(e.target.value)}
-                placeholder="leave blank if unset"
+                placeholder="API_TOKEN from the backend's .env"
                 style={{
                   width: "100%", boxSizing: "border-box",
                   border: "1px solid var(--dash-border)", borderRadius: 6,
