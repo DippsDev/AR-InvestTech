@@ -12,18 +12,49 @@ import shutil
 import sys
 from pathlib import Path
 
+# Env var that redirects every piece of writable state to a caller-chosen
+# directory. This is what makes multi-tenant hosting possible: the
+# MetaTrader5 module binds a whole OS process to a single terminal, so each
+# customer must get their own worker process — and each of those processes
+# must not share `.env`, `.license`, `machine-id`, `bot_tickets.json` or
+# `logs/` with any other. Every one of those paths is derived from
+# app_data_dir(), so pointing this at C:\AR\tenants\<id>\ isolates all of
+# them at once without config.py, logger.py, machine_id.py or
+# ticket_store.py needing to know tenants exist.
+DATA_DIR_ENV = "AR_DATA_DIR"
+
 
 def is_frozen() -> bool:
     return bool(getattr(sys, "frozen", False))
 
 
 def app_data_dir() -> Path:
-    """Writable directory for `.env`, `.license`, and logs."""
-    if is_frozen():
+    """Writable directory for `.env`, `.license`, and logs.
+
+    Honors $AR_DATA_DIR above all else so a supervisor can hand each tenant
+    worker its own isolated state directory; falls back to the per-user
+    app-data dir when frozen, or the repo root when running from source.
+    """
+    override = os.environ.get(DATA_DIR_ENV, "").strip()
+    if override:
+        d = Path(override).expanduser()
+    elif is_frozen():
         base = os.environ.get("LOCALAPPDATA") or str(Path.home() / "AppData" / "Local")
         d = Path(base) / "AR-InvestTech"
     else:
         d = Path(__file__).resolve().parent.parent
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def log_dir() -> Path:
+    """Writable directory for log files, created on demand.
+
+    Callers must not assume a relative "logs/" resolves anywhere useful —
+    a Windows service and the tray app both run with a cwd that has nothing
+    to do with the install location.
+    """
+    d = app_data_dir() / "logs"
     d.mkdir(parents=True, exist_ok=True)
     return d
 

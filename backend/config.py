@@ -29,6 +29,38 @@ MT5_PATH     = os.getenv("MT5_PATH", "")
 SUPABASE_URL          = os.getenv("SUPABASE_URL", "").strip()
 SUPABASE_SERVICE_KEY  = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
 
+# ── API surface ────────────────────────────────────────────────────────────
+# Shared secret required by every REST route (see server.py). Enforced only
+# when non-empty, so a purely-local dev setup keeps working untouched; the
+# moment the server is exposed through a tunnel this MUST be set, because
+# the routes can read the MT5 login, start/stop live trading, and overwrite
+# the MT5 password.
+API_TOKEN = os.getenv("API_TOKEN", "").strip()
+
+# Interface to bind. Defaults to loopback: the intended deployment puts a
+# Cloudflare tunnel (or the control plane) in front, and both reach the
+# server over 127.0.0.1. Set AR_BIND_HOST=0.0.0.0 only to expose it
+# directly on a trusted LAN.
+BIND_HOST = os.getenv("AR_BIND_HOST", "127.0.0.1").strip() or "127.0.0.1"
+
+try:
+    BIND_PORT = int(os.getenv("AR_BIND_PORT", "8000"))
+except ValueError:
+    BIND_PORT = 8000
+
+# Browser origins allowed to call this API. Comma-separated; "*" allows any.
+CORS_ORIGINS = [
+    o.strip() for o in os.getenv(
+        "AR_CORS_ORIGINS",
+        "https://ar-invest-tech.vercel.app,http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",") if o.strip()
+]
+
+# Desired-run-state file: records whether the operator wants the bot
+# trading, so a VPS reboot or service restart resumes instead of silently
+# leaving the account unmanaged. See bridge.py.
+BOT_STATE_FILE = str(paths.app_data_dir() / "bot_state.json")
+
 # News Analyst — shadow-mode daily directional bias (see news_analyst.py).
 # Purely observational: logs a bias call once per NY trading day for later
 # evaluation. Never gates or sizes real trades. Disabled entirely (no API
@@ -219,6 +251,8 @@ except ValueError:
     DAILY_TRADE_FLOOR = 3
 DAILY_TRADE_FLOOR_TIME_ET = os.getenv("DAILY_TRADE_FLOOR_TIME_ET", "14:00")
 
-# Logging
-LOG_FILE  = str(paths.app_data_dir() / "logs" / "trades.log")
+# Logging — paths.log_dir() creates the directory, so the handler in
+# src/logger.py can open this file without a separate makedirs that would
+# otherwise resolve against whatever cwd the process happened to start in.
+LOG_FILE  = str(paths.log_dir() / "trades.log")
 LOG_LEVEL = "INFO"

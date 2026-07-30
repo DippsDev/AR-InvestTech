@@ -1,10 +1,13 @@
 import logging
-import os
+
 import config
 
 def setup_logger():
-    os.makedirs("logs", exist_ok=True)
-
+    # No makedirs here: config.LOG_FILE already lives under paths.log_dir(),
+    # which creates it. The old `os.makedirs("logs")` was relative to the
+    # cwd, so under a Windows service (or the tray app, which chdirs) it
+    # created a stray directory somewhere else and left the real log dir
+    # missing.
     formatter = logging.Formatter(
         "%(asctime)s | %(levelname)-8s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",

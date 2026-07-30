@@ -12,6 +12,7 @@ Usage: python pre_live_check.py
 """
 import os
 import sys
+import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -248,5 +249,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    import time
     main()
