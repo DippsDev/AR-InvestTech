@@ -43,8 +43,15 @@ export function saveConnection(baseUrl: string, token: string): void {
   window.localStorage.setItem(KEY, JSON.stringify(clean));
 }
 
-// Token is optional: server.py doesn't currently enforce X-API-Token on any
-// route, so only a reachable baseUrl is required for the app to function.
+// Only a baseUrl is required to have "a connection" — deliberately not the
+// token, because a backend with no API_TOKEN set in its .env runs in local-only
+// mode and needs none (see config.API_TOKEN).
+//
+// Whether the token is actually required is therefore a property of the
+// backend, not something this function can know up front. When the backend
+// does set one, every route bar /health and the docs endpoints answers 401
+// until a matching token is supplied — api.ts turns that into an actionable
+// message rather than failing here.
 export function hasConnection(): boolean {
   return Boolean(getConnection().baseUrl);
 }
