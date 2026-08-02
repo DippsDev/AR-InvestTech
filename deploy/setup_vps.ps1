@@ -58,10 +58,32 @@ Step "Installing dependencies"
 Ok "Installed backend/requirements.txt"
 
 Step "Verifying the MetaTrader5 package"
-# This wheel is Windows-only; a silent failure here is the single most
-# confusing way for the whole deployment to not work.
-& $Python -c "import MetaTrader5; print('  MetaTrader5', MetaTrader5.__version__)"
-Ok "MetaTrader5 package imports"
+# Windows-only wheel, and a numpy/MT5 ABI mismatch is a confusing way for
+# everything downstream to fail — so it is worth checking here. But it must
+# NOT abort the run: the .env written below is what the rest of the runbook
+# depends on, and deploy/verify_vps.py re-checks MT5 properly later anyway.
+#
+# ErrorActionPreference is relaxed around the native call because in
+# PowerShell 5.1 a native exe writing to stderr under -EA Stop raises
+# NativeCommandError, which would terminate the script on a mere traceback.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$mt5Out = & $Python -c "import MetaTrader5; print(MetaTrader5.__version__)" 2>&1
+$mt5Ok  = ($LASTEXITCODE -eq 0)
+$npOut  = & $Python -c "import numpy; print(numpy.__version__)" 2>&1
+$npOk   = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $prevEAP
+
+if ($npOk) { Ok "numpy $($npOut | Select-Object -Last 1)" }
+else       { Warn "numpy failed to import — see $npOut" }
+
+if ($mt5Ok) {
+    Ok "MetaTrader5 $($mt5Out | Select-Object -Last 1) imports"
+} else {
+    Warn "MetaTrader5 failed to import. Continuing so .env is still written."
+    Warn "Re-test it on its own after setup finishes:"
+    Write-Host '        .\.venv\Scripts\python.exe -c "import MetaTrader5 as m; print(m.__version__)"' -ForegroundColor Gray
+}
 
 Step "Installing cloudflared"
 $cf = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source
