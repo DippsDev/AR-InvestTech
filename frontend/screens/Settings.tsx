@@ -1,7 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
 import type { Settings as S } from "@/lib/api";
-import { getConnection, isValidBaseUrl, saveConnection } from "@/lib/connection";
 
 interface Props {
   onSave: (data: S) => Promise<void>;
@@ -66,25 +65,8 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
       setRestartOk(true);
       setTimeout(() => setRestartOk(false), 2000);
     } catch (err) {
-      setRestartError(err instanceof Error ? err.message : "Restart failed — check the Backend URL in Connection below.");
+      setRestartError(err instanceof Error ? err.message : "Restart failed — check that the bot backend is reachable.");
     } finally { setRestarting(false); }
-  };
-
-  const [backendUrl, setBackendUrl]   = useState(() => getConnection().baseUrl);
-  const [apiToken,   setApiToken]     = useState(() => getConnection().token);
-  const [connError,  setConnError]   = useState("");
-  const [connSaved,  setConnSaved]   = useState(false);
-
-  const saveConn = () => {
-    if (backendUrl && !isValidBaseUrl(backendUrl)) {
-      setConnError("Enter a valid backend URL, e.g. http://192.168.1.50:8000");
-      setConnSaved(false);
-      return;
-    }
-    setConnError("");
-    saveConnection(backendUrl, apiToken);
-    setConnSaved(true);
-    setTimeout(() => setConnSaved(false), 2000);
   };
 
   // Load once on mount only — `doLoad` is a fresh closure on every parent
@@ -120,7 +102,7 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
       setTimeout(() => setSaveOk(false), 2000);
     } catch (err) {
       setSaveError(
-        err instanceof Error ? err.message : "Save failed — check the Backend URL in Connection below."
+        err instanceof Error ? err.message : "Save failed — check that the bot backend is reachable."
       );
     } finally { setSaving(false); }
   };
@@ -168,7 +150,7 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 700, color: "var(--dash-text)" }}>Settings</div>
-          <div style={{ fontSize: 12, color: "var(--dash-text-muted)", marginTop: 2 }}>Connection &amp; risk parameters</div>
+          <div style={{ fontSize: 12, color: "var(--dash-text-muted)", marginTop: 2 }}>Risk parameters</div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {saveOk && <span style={{ fontSize: 12, color: "#22C55E" }}>Saved</span>}
@@ -181,62 +163,6 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
           }}>
             {saving ? "Saving…" : "Save Changes"}
           </button>
-        </div>
-      </div>
-
-      {/* Backend Connection */}
-      <div style={cardStyle}>
-        <SectionHeader label="Backend Connection" color="var(--dash-accent-green, #22C55E)" />
-        <div style={{ padding: 16 }}>
-          <div className="grid-mt5">
-            <div>
-              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--dash-text-muted)", marginBottom: 5 }}>Backend URL</label>
-              <input
-                type="text"
-                value={backendUrl}
-                onChange={e => { setBackendUrl(e.target.value); setConnError(""); }}
-                placeholder="http://192.168.1.50:8000"
-                style={{
-                  width: "100%", boxSizing: "border-box",
-                  border: "1px solid var(--dash-border)", borderRadius: 6,
-                  padding: "9px 12px", fontSize: 13, color: "var(--dash-text)",
-                  outline: "none", fontFamily: "inherit",
-                  background: "var(--dash-card-bg-2)",
-                }}
-              />
-            </div>
-            <div>
-              {/* Usually prefilled with the license key rather than a token:
-                  Activation saves the key as the credential when this is left
-                  blank, and the backend accepts either. Clearing it here will
-                  break the connection until you re-activate. */}
-              <label style={{ display: "block", fontSize: 11, fontWeight: 600, color: "var(--dash-text-muted)", marginBottom: 5 }}>API Token (optional — defaults to your license key)</label>
-              <input
-                type="text"
-                value={apiToken}
-                onChange={e => setApiToken(e.target.value)}
-                placeholder="leave blank to use your license key"
-                style={{
-                  width: "100%", boxSizing: "border-box",
-                  border: "1px solid var(--dash-border)", borderRadius: 6,
-                  padding: "9px 12px", fontSize: 13, color: "var(--dash-text)",
-                  outline: "none", fontFamily: "inherit",
-                  background: "var(--dash-card-bg-2)",
-                }}
-              />
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 12 }}>
-            <button onClick={saveConn} style={{
-              background: "var(--dash-card-bg-2)", color: "var(--dash-text)", border: "1px solid var(--dash-border)",
-              borderRadius: 6, padding: "7px 14px", fontSize: 12, fontWeight: 700,
-              cursor: "pointer", fontFamily: "inherit",
-            }}>
-              Save Connection
-            </button>
-            {connSaved && <span style={{ fontSize: 12, color: "#22C55E" }}>Saved</span>}
-            {connError && <span style={{ fontSize: 12, color: "#F87171" }}>{connError}</span>}
-          </div>
         </div>
       </div>
 

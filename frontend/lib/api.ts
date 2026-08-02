@@ -24,13 +24,13 @@ async function req(path: string, init?: RequestInit): Promise<Response> {
   } catch {
     // fetch only throws on a network-level failure (DNS, dead tunnel,
     // CORS block) — surface that distinctly from an HTTP error response.
-    throw new Error(`Backend not reachable at ${baseUrl || "(no URL set)"} — check the Backend URL in Settings.`);
+    throw new Error("Backend not reachable — please try again in a moment.");
   }
   if (!r.ok) {
     if (r.status === 401) {
       throw new Error(
         token
-          ? "Backend rejected your credential. Re-activate with your license key, or paste API_TOKEN from the backend's .env into the API Token field."
+          ? "Backend rejected your license key. Please re-activate."
           : "Not activated on this backend. Enter your license key on the Activation screen to connect.",
       );
     }
@@ -153,7 +153,7 @@ export const apiClient = {
       });
       return r.json();
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : "Backend not reachable. Check the backend URL in Settings." };
+      return { ok: false, error: err instanceof Error ? err.message : "Backend not reachable. Please try again." };
     }
   },
   async validateActivation(key: string) {
@@ -167,7 +167,7 @@ export const apiClient = {
       const r = await req("/mt5/connect", { method: "POST" });
       return r.json();
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : "Backend not reachable. Check the backend URL in Settings." };
+      return { ok: false, error: err instanceof Error ? err.message : "Backend not reachable. Please try again." };
     }
   },
 
