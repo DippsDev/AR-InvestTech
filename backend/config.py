@@ -56,6 +56,12 @@ CORS_ORIGINS = [
     ).split(",") if o.strip()
 ]
 
+# Optional TLS certificate/key paths. When both are set, the API serves HTTPS.
+# Useful when exposing the backend directly on a public IP behind Cloudflare
+# "Full" SSL mode (self-signed origin cert) or "Full (strict)" with a valid cert.
+SSL_CERTFILE = os.getenv("AR_SSL_CERTFILE", "").strip() or None
+SSL_KEYFILE  = os.getenv("AR_SSL_KEYFILE", "").strip() or None
+
 # Desired-run-state file: records whether the operator wants the bot
 # trading, so a VPS reboot or service restart resumes instead of silently
 # leaving the account unmanaged. See bridge.py.
