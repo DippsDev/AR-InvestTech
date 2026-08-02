@@ -73,10 +73,18 @@ if (-not $cf) {
 }
 if ($cf) {
     Ok "cloudflared already present at $cf"
-} else {
+} elseif (Get-Command winget -ErrorAction SilentlyContinue) {
     Write-Host "  Installing via winget..."
     winget install --id Cloudflare.cloudflared -e --accept-source-agreements --accept-package-agreements
     Ok "cloudflared installed (open a new shell for it to appear on PATH)"
+} else {
+    # Windows Server SKUs ship without App Installer, so winget is absent.
+    # This must not abort the run: cloudflared is frequently already installed
+    # (or managed from the Zero Trust dashboard), and the steps after this one
+    # — writing .env with a generated API_TOKEN — are the ones that matter.
+    Warn "winget not available and cloudflared not found on PATH."
+    Warn "If the tunnel is not already running, install it manually from:"
+    Write-Host "        https://github.com/cloudflare/cloudflared/releases/latest (cloudflared-windows-amd64.msi)" -ForegroundColor Gray
 }
 
 Step "Configuring .env"
