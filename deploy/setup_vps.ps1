@@ -74,8 +74,11 @@ $npOut  = & $Python -c "import numpy; print(numpy.__version__)" 2>&1
 $npOk   = ($LASTEXITCODE -eq 0)
 $ErrorActionPreference = $prevEAP
 
-if ($npOk) { Ok "numpy $($npOut | Select-Object -Last 1)" }
-else       { Warn "numpy failed to import — see $npOut" }
+if ($npOk) {
+    Ok "numpy $($npOut | Select-Object -Last 1)"
+} else {
+    Warn "numpy failed to import — see $npOut"
+}
 
 if ($mt5Ok) {
     Ok "MetaTrader5 $($mt5Out | Select-Object -Last 1) imports"
