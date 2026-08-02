@@ -26,6 +26,10 @@ backend/backtests/*.png
 backend/backtests/*.log
 backend/bot_tickets.json
 backend/news_bias_history.json
+# Runtime desired-run-state (see bridge.py). Machine-specific, and committing
+# it would push one machine's "the bot should be trading" flag onto every
+# other checkout.
+backend/bot_state.json
 
 # Next.js
 frontend/.next/
