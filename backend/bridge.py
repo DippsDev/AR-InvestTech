@@ -260,7 +260,7 @@ class BotBridge:
         if not LICENSE_FILE.exists():
             return {"ok": False}
         key = LICENSE_FILE.read_text().strip()
-        valid = key.startswith("ARB-") and len(key) == 18
+        valid = key.startswith("MOJALEFA-") and len(key) == 13
         return {"ok": valid, "key": key if valid else ""}
 
     def activated_license_key(self) -> str:
@@ -282,8 +282,8 @@ class BotBridge:
 
     def validate_license(self, key: str) -> dict:
         key = str(key).strip().upper()
-        if not key.startswith("ARB-") or len(key) != 18:
-            return {"ok": False, "error": "Invalid format. Expected ARB-XXXX-XXXX-XXXX"}
+        if not key.startswith("MOJALEFA-") or len(key) != 13:
+            return {"ok": False, "error": "Invalid format. Expected MOJALEFA-XXXX"}
 
         # If Supabase is not configured, fall back to local-only validation.
         if not supabase_client.is_configured():

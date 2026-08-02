@@ -1,15 +1,16 @@
 // Where the dashboard finds its backend. The frontend is a static export
 // (see next.config.ts: output "export") deployed once and shared by every
-// user, so the backend URL/token can't be a build-time constant — each
-// browser stores its own, entered once on the Activation screen.
+// user, so the credential (license key) is stored per-browser, but the backend
+// URL is hardcoded so clients never have to enter it.
 const KEY = "ar-invest-connection";
+export const DEFAULT_BACKEND_URL = "https://bot.ar-investech.uk";
 
 export interface Connection {
   baseUrl: string;
   token: string;
 }
 
-const EMPTY: Connection = { baseUrl: "", token: "" };
+const EMPTY: Connection = { baseUrl: DEFAULT_BACKEND_URL, token: "" };
 
 // A baseUrl that isn't a real absolute http(s) URL (e.g. an email typed into
 // the wrong field) must never reach fetch() — the browser would silently
@@ -30,16 +31,15 @@ export function getConnection(): Connection {
     const raw = window.localStorage.getItem(KEY);
     if (!raw) return EMPTY;
     const parsed = JSON.parse(raw);
-    const baseUrl = parsed.baseUrl ?? "";
-    return { baseUrl: isValidBaseUrl(baseUrl) ? baseUrl : "", token: parsed.token ?? "" };
+    return { baseUrl: DEFAULT_BACKEND_URL, token: parsed.token ?? "" };
   } catch {
     return EMPTY;
   }
 }
 
-export function saveConnection(baseUrl: string, token: string): void {
+export function saveConnection(_baseUrl: string, token: string): void {
   if (typeof window === "undefined") return;
-  const clean: Connection = { baseUrl: baseUrl.trim().replace(/\/+$/, ""), token: token.trim() };
+  const clean: Connection = { baseUrl: DEFAULT_BACKEND_URL, token: token.trim() };
   window.localStorage.setItem(KEY, JSON.stringify(clean));
 }
 

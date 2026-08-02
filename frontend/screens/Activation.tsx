@@ -1,8 +1,6 @@
 "use client";
 import { useState, useCallback } from "react";
-import { getConnection, isValidBaseUrl, saveConnection } from "@/lib/connection";
-import { PERSONAS } from "@/lib/personas";
-import PixelAvatar from "@/components/dashboard/PixelAvatar";
+import { saveConnection } from "@/lib/connection";
 
 interface Props {
   onActivated:  () => void;
@@ -11,10 +9,10 @@ interface Props {
 
 function fmtKey(raw: string) {
   const stripped = raw.replace(/[^A-Z0-9]/gi, "").toUpperCase();
-  const withoutPrefix = stripped.startsWith("ARB") ? stripped.slice(3) : stripped;
-  const v = withoutPrefix.slice(0, 12);
-  const parts = ["ARB", v.slice(0, 4), v.slice(4, 8), v.slice(8, 12)].filter(p => p.length > 0);
-  return parts.join("-");
+  const prefix = "MOJALEFA";
+  let body = stripped.startsWith(prefix) ? stripped.slice(prefix.length) : stripped;
+  body = body.replace(/[^0-9]/g, "").slice(0, 4);
+  return `${prefix}-${body}`;
 }
 
 const inputStyle: React.CSSProperties = {
@@ -44,11 +42,9 @@ const labelStyle: React.CSSProperties = {
 };
 
 export default function Activation({ onActivated, doValidate }: Props) {
-  const [key,        setKey]        = useState("");
-  const [backendUrl, setBackendUrl] = useState(() => getConnection().baseUrl);
-  const [apiToken,   setApiToken]   = useState(() => getConnection().token);
-  const [error,      setError]      = useState("");
-  const [loading,    setLoading]    = useState(false);
+  const [key,     setKey]     = useState("");
+  const [error,   setError]   = useState("");
+  const [loading, setLoading] = useState(false);
 
   const handleKey = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setKey(fmtKey(e.target.value));
@@ -57,17 +53,12 @@ export default function Activation({ onActivated, doValidate }: Props) {
 
   const activate = useCallback(async () => {
     if (loading) return;
-    if (!backendUrl) { setError("Backend URL is required."); return; }
-    if (!isValidBaseUrl(backendUrl)) { setError("Enter a valid backend URL, e.g. http://192.168.1.50:8000"); return; }
     if (!key) { setError("License key is required."); return; }
     setLoading(true);
     setError("");
-    // With no explicit token, the license key itself becomes the credential:
-    // server.py's _require_token accepts either, so a single-user install never
-    // has to paste API_TOKEN out of the backend's .env. The key is saved before
-    // validating because /license/validate is only exempt from the guard on a
-    // first run — every call after activation carries this header.
-    saveConnection(backendUrl, apiToken || key);
+    // The license key itself becomes the credential: server.py's _require_token
+    // accepts either the API_TOKEN from .env or the activated license key.
+    saveConnection("", key);
     try {
       const res = await doValidate(key);
       if (res.ok) onActivated();
@@ -75,7 +66,7 @@ export default function Activation({ onActivated, doValidate }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [key, backendUrl, apiToken, loading, doValidate, onActivated]);
+  }, [key, loading, doValidate, onActivated]);
 
   return (
     <div className="flex-1 flex flex-col animate-fade"
@@ -91,20 +82,15 @@ export default function Activation({ onActivated, doValidate }: Props) {
         textAlign: "center",
         boxShadow: "0 20px 50px -20px rgba(0,0,0,.6)",
       }}>
-        {/* Logo — Trader's pixel-office avatar stands in for the brand mark,
-            talking to give the screen some life before there's any real
-            backend activity to show. */}
+        {/* Logo — favicon.ico used as the brand mark. */}
         <div className="flex items-center justify-center gap-2.5" style={{ marginBottom: 24 }}>
           <div style={{
             width: 56, height: 56,
-            background: "var(--dash-card-bg-2)",
-            border: "1px solid var(--dash-border)",
-            borderRadius: 10,
             display: "flex", alignItems: "center", justifyContent: "center",
             overflow: "hidden",
             flexShrink: 0,
           }}>
-            <PixelAvatar persona={PERSONAS.Trader} size={44} talking />
+            <img src="/favicon.ico" alt="ARI_Sniper_EA" width={44} height={44} style={{ objectFit: "contain" }} />
           </div>
           <div style={{ textAlign: "left" }}>
             <div style={{ fontSize: 18, fontWeight: 700, color: "var(--dash-text)" }}>ARI_Sniper_EA</div>
@@ -116,46 +102,10 @@ export default function Activation({ onActivated, doValidate }: Props) {
           Activate Your License
         </h1>
         <p style={{ fontSize: 13, color: "var(--dash-text-muted)", margin: "0 0 24px", lineHeight: 1.5 }}>
-          Connect to your backend and enter your license key to unlock the bot.
+          Enter your license key to unlock the bot.
         </p>
 
-        {/* Backend connection */}
-        <div style={{ textAlign: "left", marginBottom: 14 }}>
-          <label style={labelStyle}>Backend URL</label>
-          <input
-            type="text"
-            value={backendUrl}
-            onChange={e => { setBackendUrl(e.target.value); setError(""); }}
-            onKeyDown={e => e.key === "Enter" && activate()}
-            placeholder="http://192.168.1.50:8000"
-            inputMode="url"
-            autoCapitalize="none"
-            autoCorrect="off"
-            className="act-input"
-            style={{ ...inputStyle, textAlign: "left", letterSpacing: "normal" }}
-          />
-        </div>
-
-        <div style={{ textAlign: "left", marginBottom: 20 }}>
-          {/* Genuinely optional now: leaving it blank sends the license key as
-              the credential instead (see activate() above), which the backend
-              accepts. Only needed to override that with the API_TOKEN from the
-              backend's .env. */}
-          <label style={labelStyle}>API Token <span style={{ textTransform: "none", fontWeight: 400 }}>(optional — your license key is used by default)</span></label>
-          <input
-            type="text"
-            value={apiToken}
-            onChange={e => setApiToken(e.target.value)}
-            onKeyDown={e => e.key === "Enter" && activate()}
-            placeholder="leave blank to use your license key"
-            autoCapitalize="none"
-            autoCorrect="off"
-            className="act-input"
-            style={{ ...inputStyle, textAlign: "left", letterSpacing: "normal" }}
-          />
-        </div>
-
-        {/* Key */}
+        {/* License key */}
         <div style={{ textAlign: "left", marginBottom: 20 }}>
           <label style={labelStyle}>License Key</label>
           <input
@@ -163,8 +113,8 @@ export default function Activation({ onActivated, doValidate }: Props) {
             value={key}
             onChange={handleKey}
             onKeyDown={e => e.key === "Enter" && activate()}
-            placeholder="ARB-XXXX-XXXX-XXXX"
-            maxLength={19}
+            placeholder="MOJALEFA-XXXX"
+            maxLength={13}
             inputMode="text"
             autoCapitalize="characters"
             autoCorrect="off"
@@ -176,7 +126,7 @@ export default function Activation({ onActivated, doValidate }: Props) {
 
         <button
           onClick={activate}
-          disabled={loading || !key || !backendUrl}
+          disabled={loading || !key}
           className="w-full flex items-center justify-center gap-2"
           style={{
             background: "#22C55E",
@@ -186,9 +136,9 @@ export default function Activation({ onActivated, doValidate }: Props) {
             padding: "12px 0",
             fontSize: 14,
             fontWeight: 700,
-            cursor: (loading || !key || !backendUrl) ? "not-allowed" : "pointer",
+            cursor: (loading || !key) ? "not-allowed" : "pointer",
             fontFamily: "inherit",
-            opacity: (loading || !key || !backendUrl) ? 0.45 : 1,
+            opacity: (loading || !key) ? 0.45 : 1,
             transition: "background 0.2s ease, color 0.2s ease, opacity 0.15s ease",
           }}
         >

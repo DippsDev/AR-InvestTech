@@ -45,7 +45,7 @@ def _require_token(request: Request, x_api_token: str | None = Header(default=No
       2. The activated license key — the value the operator already types on
          the Activation screen. Accepting it means a single-user install needs
          no second secret pasted out of .env, which is the whole point; the
-         key is ARB- plus 12 alphanumerics, so it is not meaningfully weaker
+         key is MOJALEFA- plus 4 digits, so it is not meaningfully weaker
          than the token it stands in for.
 
     The bootstrap exemption is deliberately conditional on NO license being

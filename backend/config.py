@@ -52,7 +52,7 @@ except ValueError:
 CORS_ORIGINS = [
     o.strip() for o in os.getenv(
         "AR_CORS_ORIGINS",
-        "https://ar-invest-tech.vercel.app,http://localhost:3000,http://127.0.0.1:3000",
+        "https://ar-investech.uk,https://www.ar-investech.uk,https://ar-invest-tech.vercel.app,http://localhost:3000,http://127.0.0.1:3000",
     ).split(",") if o.strip()
 ]
 

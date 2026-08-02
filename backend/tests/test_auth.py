@@ -20,8 +20,8 @@ import config
 import server
 
 TOKEN = "test-api-token-abcdefghijklmnop"
-LICENSE = "ARB-X4K9-PL2M-7WQN"
-OTHER_LICENSE = "ARB-AAAA-BBBB-CCCC"
+LICENSE = "MOJALEFA-1234"
+OTHER_LICENSE = "MOJALEFA-9999"
 
 
 def call(path: str, sent: str | None, stored_license: str, api_token: str = TOKEN) -> bool:
