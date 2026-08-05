@@ -248,6 +248,8 @@ class TrendlineLiveAdapter:
                             f"[TL] Signal skipped | init warmup | bar={i} latest={latest_idx}"
                         )
                         continue
+                    if self._stop_inside_spread(symbol, signal):
+                        continue
                     lots = self._compute_lots(symbol, signal)
                     if lots is not None:
                         logger.info(
@@ -692,6 +694,48 @@ class TrendlineLiveAdapter:
             touch_tolerance_points=base.touch_tolerance_points * 1.5,
             steepness_max_ratio=base.steepness_max_ratio * 1.5,
         )
+
+    def _stop_inside_spread(self, symbol: str, signal: Signal) -> bool:
+        """True when the stop is too close to the entry to survive the spread.
+
+        A long fills at ask and is stopped when bid reaches the SL, so a stop
+        nearer than the spread is already breached at the moment of fill. The
+        loss is certain, and sizing makes it worse: risk is divided by that
+        same small distance, so the doomed trade asks for the largest position.
+
+        TL is more exposed to this than the fixed floors suggest. USDJPYm
+        quotes ~10 points intraday but was observed at 130 across the rollover
+        — five times the 23-point `min_risk_points` this symbol carries — and
+        H1 bars mean a signal can be acted on well inside that window.
+
+        Reads `self._cfg`, not the boosted config, on purpose: `_boosted_cfg`
+        halving `min_risk_points` is a defensible frequency trade-off, but
+        nothing should relax a floor that exists because the arithmetic of the
+        fill makes the trade unwinnable.
+        """
+        from src.logger import logger
+
+        mult = self._cfg.min_stop_spread_mult
+        if mult <= 0:
+            return False
+
+        tick = mt5_cache.symbol_info_tick(symbol)
+        if tick is None:
+            return False
+        spread = tick.ask - tick.bid
+        if spread <= 0:
+            return False
+
+        risk = abs(signal.entry_price - signal.stop_price)
+        if risk >= spread * mult:
+            return False
+
+        logger.warning(
+            f"[TL] Signal rejected | stop {risk:.5f} from entry is inside "
+            f"{mult}x the spread {spread:.5f} — would be stopped on fill | "
+            f"entry={signal.entry_price:.5f} stop={signal.stop_price:.5f}"
+        )
+        return True
 
     def _compute_lots(self, symbol: str, signal: Signal) -> Optional[float]:
         from src.logger import logger

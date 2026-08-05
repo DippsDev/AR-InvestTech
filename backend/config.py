@@ -197,6 +197,13 @@ except ValueError:
 
 TL_NEWS = os.getenv("TL_NEWS", "true").lower() == "true"
 
+# Refuse entries whose stop is nearer than this multiple of the live spread —
+# see TrendlineConfig.min_stop_spread_mult. 0 disables the guard.
+try:
+    TL_MIN_STOP_SPREAD_MULT = float(os.getenv("TL_MIN_STOP_SPREAD_MULT", "1.5"))
+except ValueError:
+    TL_MIN_STOP_SPREAD_MULT = 1.5
+
 # ---------------------------------------------------------------------------
 # Mutanabby (MB) — SuperTrend flip strategy, H1
 # ---------------------------------------------------------------------------
