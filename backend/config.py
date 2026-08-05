@@ -143,6 +143,12 @@ SB_OFF_HOURS  = os.getenv("SB_OFF_HOURS",  "false").lower() == "true"
 SB_MARKET_ORDER = os.getenv("SB_MARKET_ORDER", "false").lower() == "true"
 # Sweep entry mode: enter at market on sweep detection alone, no FVG required (test/demo only)
 SB_SWEEP_ENTRY  = os.getenv("SB_SWEEP_ENTRY",  "false").lower() == "true"
+# Refuse entries whose stop is nearer than this multiple of the live spread —
+# see SilverBulletConfig.min_stop_spread_mult. 0 disables the guard.
+try:
+    SB_MIN_STOP_SPREAD_MULT = float(os.getenv("SB_MIN_STOP_SPREAD_MULT", "1.5"))
+except ValueError:
+    SB_MIN_STOP_SPREAD_MULT = 1.5
 
 # Trendline strategy — same instrument as Silver Bullet (US30), H1 candles,
 # aggressive market-order entries on trendline touch + reversal candlestick

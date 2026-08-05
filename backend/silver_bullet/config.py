@@ -121,6 +121,16 @@ class SilverBulletConfig:
     # Default equals stop_buffer_points so the FVG must provide at least
     # that much separation from the stop.
     min_risk_points: float = 5.0
+    # Reject a signal whose stop sits closer to entry than this multiple of the
+    # live spread. `min_risk_points` cannot do this job: it is a fixed price
+    # distance chosen per symbol from historical volatility, while the spread
+    # is a live quantity that widens at the rollover and on news. A long fills
+    # at ask and is stopped when bid touches the SL, so a stop inside the
+    # spread is hit at the moment of fill — and because sizing divides risk by
+    # that same tiny distance, the doomed trade also asks for the largest
+    # position. Enforced at execution, not in the signal scan, so backtests
+    # (which have no live spread) are unaffected. Set to 0 to disable.
+    min_stop_spread_mult: float = 1.5
     # Filter signals to match the previous trading day's candle direction:
     # yesterday bullish → only longs today; yesterday bearish → only shorts today.
     # Uses the prior day's completed candle, zero lookahead.

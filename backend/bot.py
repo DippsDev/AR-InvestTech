@@ -49,6 +49,7 @@ class SilverBulletBot:
             base_cfg.off_hours_trading = True
         # Respect the SB_NEWS env toggle — when True, no new trades on high-impact news days.
         base_cfg.skip_news_days = config.SB_NEWS
+        base_cfg.min_stop_spread_mult = config.SB_MIN_STOP_SPREAD_MULT
         # Silver Bullet defaults to limit orders for better entry prices.
         # Market-order mode is only enabled for the explicit sweep-entry demo mode.
         if config.SB_SWEEP_ENTRY:
