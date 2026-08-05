@@ -391,6 +391,8 @@ class SilverBulletLiveAdapter:
                         f"[SB] Off-hours cap ({self._cfg.off_hours_max_trades}) reached — skipping"
                     )
                     continue
+                if self._stop_inside_spread(symbol, signal):
+                    continue
                 lots = self._compute_lots(symbol, signal)
                 if lots is not None:
                     logger.info(
@@ -1046,6 +1048,44 @@ class SilverBulletLiveAdapter:
             min_risk_points=base.min_risk_points * 0.5,
             fvg_min_points=base.fvg_min_points * 0.5,
         )
+
+    def _stop_inside_spread(self, symbol: str, signal: Signal) -> bool:
+        """True when the stop is too close to the entry to survive the spread.
+
+        A long fills at ask and is stopped when bid reaches the SL, so a stop
+        nearer than the spread is already breached at the moment of fill. The
+        loss is certain, and sizing makes it worse: risk is divided by that
+        same small distance, so the doomed trade asks for the largest position.
+
+        Reads `self._cfg`, not the effective (off-hours / boosted) config, on
+        purpose. `_boosted_cfg` halves `min_risk_points` to widen which real
+        setups qualify — a defensible frequency trade-off — but nothing should
+        be able to relax a floor that exists because the arithmetic of the fill
+        makes the trade unwinnable.
+        """
+        from src.logger import logger
+
+        mult = self._cfg.min_stop_spread_mult
+        if mult <= 0:
+            return False
+
+        tick = mt5_cache.symbol_info_tick(symbol)
+        if tick is None:
+            return False
+        spread = tick.ask - tick.bid
+        if spread <= 0:
+            return False
+
+        risk = abs(signal.entry_price - signal.stop_price)
+        if risk >= spread * mult:
+            return False
+
+        logger.warning(
+            f"[SB] Signal rejected | stop {self._px(risk)} from entry is inside "
+            f"{mult}x the spread {self._px(spread)} — would be stopped on fill | "
+            f"entry={self._px(signal.entry_price)} stop={self._px(signal.stop_price)}"
+        )
+        return True
 
     def _compute_lots(self, symbol: str, signal: Signal) -> Optional[float]:
         from src.logger import logger
