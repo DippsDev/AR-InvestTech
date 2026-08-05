@@ -60,6 +60,7 @@ class SilverBulletBot:
         self.tl_enabled = config.TL_ENABLED
         base_tl_cfg = TrendlineConfig()
         base_tl_cfg.skip_news_days = config.TL_NEWS
+        base_tl_cfg.min_stop_spread_mult = config.TL_MIN_STOP_SPREAD_MULT
         self.base_tl_cfg = base_tl_cfg
 
         self.mb_enabled = config.MB_ENABLED

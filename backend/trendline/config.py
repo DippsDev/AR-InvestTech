@@ -53,6 +53,16 @@ class TrendlineConfig:
     stop_buffer_points: float = 5.0
     # Minimum risk in points; signals with a smaller stop distance are skipped.
     min_risk_points: float = 15.0
+    # Reject a signal whose stop sits closer to entry than this multiple of the
+    # live spread. `min_risk_points` cannot do this job: it is a fixed price
+    # distance chosen per symbol from historical volatility, while the spread is
+    # live — USDJPYm quotes ~10 points intraday and was seen at 130 across the
+    # rollover, five times this symbol's 23-point floor. A long fills at ask and
+    # is stopped when bid touches the SL, so a stop inside the spread is hit at
+    # the moment of fill, and sizing divides risk by that same small distance.
+    # Enforced at execution, not in the signal scan, so backtests (which have no
+    # live spread) are unaffected. Set to 0 to disable.
+    min_stop_spread_mult: float = 1.5
 
     # ── Profit target ─────────────────────────────────────────────────────────
     # "opposite_swing" : nearest confirmed swing on the other side, if it clears
