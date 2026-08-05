@@ -48,6 +48,13 @@ def _parse_args(argv=None):
     p.add_argument("--target-mode",         default="opposite_liquidity",
                    choices=["rr", "opposite_liquidity"])
     p.add_argument("--rr",                  type=float, default=2.0)
+    p.add_argument("--no-split-targets", dest="split_targets", action="store_false",
+                   help="Disable the TP1/TP2 split and use the single --target-mode/--rr target")
+    p.set_defaults(split_targets=SilverBulletConfig.split_targets)
+    p.add_argument("--tp1-rr",       type=float, default=SilverBulletConfig.tp1_rr)
+    p.add_argument("--tp2-rr",       type=float, default=SilverBulletConfig.tp2_rr)
+    p.add_argument("--tp1-fraction", type=float, default=SilverBulletConfig.tp1_fraction,
+                   help="Portion of the position closed at TP1 (rest rides to TP2)")
     p.add_argument("--one-trade-per-window", action="store_true", default=True)
     p.add_argument("--min-risk",            type=float, default=5.0,
                    help="Minimum risk in points; degenerate setups below this are skipped")
@@ -127,6 +134,10 @@ def main(argv=None):
         stop_buffer_points    = args.stop_buffer,
         target_mode           = args.target_mode,
         rr                    = args.rr,
+        split_targets         = args.split_targets,
+        tp1_rr                = args.tp1_rr,
+        tp2_rr                = args.tp2_rr,
+        tp1_fraction          = args.tp1_fraction,
         one_trade_per_window  = args.one_trade_per_window,
         min_risk_points       = args.min_risk,
         spread_points         = args.spread,

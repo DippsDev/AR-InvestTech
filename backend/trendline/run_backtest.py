@@ -44,6 +44,13 @@ def _parse_args(argv=None):
     p.add_argument("--min-risk",              type=float, default=TrendlineConfig.min_risk_points)
     p.add_argument("--target-mode",           default=TrendlineConfig.target_mode, choices=["opposite_swing", "rr"])
     p.add_argument("--rr",                    type=float, default=TrendlineConfig.rr)
+    p.add_argument("--no-split-targets", dest="split_targets", action="store_false",
+                   help="Disable the TP1/TP2 split and use the single --target-mode/--rr target")
+    p.set_defaults(split_targets=TrendlineConfig.split_targets)
+    p.add_argument("--tp1-rr",       type=float, default=TrendlineConfig.tp1_rr)
+    p.add_argument("--tp2-rr",       type=float, default=TrendlineConfig.tp2_rr)
+    p.add_argument("--tp1-fraction", type=float, default=TrendlineConfig.tp1_fraction,
+                   help="Portion of the position closed at TP1 (rest rides to TP2)")
     p.add_argument("--min-rr-for-swing",      type=float, default=TrendlineConfig.min_rr_for_swing_target)
     p.add_argument("--breakeven-r",           type=float, default=TrendlineConfig.breakeven_r)
     p.add_argument("--trail-r",               type=float, default=TrendlineConfig.trail_r)
@@ -76,6 +83,10 @@ def main(argv=None):
         min_risk_points             = args.min_risk,
         target_mode                 = args.target_mode,
         rr                          = args.rr,
+        split_targets               = args.split_targets,
+        tp1_rr                      = args.tp1_rr,
+        tp2_rr                      = args.tp2_rr,
+        tp1_fraction                = args.tp1_fraction,
         min_rr_for_swing_target     = args.min_rr_for_swing,
         breakeven_r                 = args.breakeven_r,
         trail_r                     = args.trail_r,
@@ -111,7 +122,14 @@ def main(argv=None):
     print(f"  Profit factor   : {metrics['profit_factor']}")
     print(f"  Max drawdown    : ${metrics['max_drawdown_usd']}")
     exits = metrics["exit_breakdown"]
-    print(f"  Exit breakdown  : target={exits.get('target',0)}  stop={exits.get('stop',0)}  time={exits.get('time_exit',0)}")
+    # tp1 counts trades whose first leg filled, whatever took the runner after —
+    # it is not an exit reason of its own, so it is reported alongside rather
+    # than inside the breakdown (which must still sum to the trade count).
+    tp1_filled = sum(1 for t in trades if t.tp1_hit)
+    print(f"  Exit breakdown  : target={exits.get('target',0)}  target2={exits.get('target2',0)}  "
+          f"stop={exits.get('stop',0)}  time={exits.get('time_exit',0)}")
+    if tp1_filled:
+        print(f"  TP1 partials    : {tp1_filled} of {len(trades)} trades banked their first leg")
     print("=" * 50 + "\n")
 
     if trades and args.show_trades > 0:

@@ -23,19 +23,55 @@ from . import paths
 _LOCK = threading.Lock()
 _RETENTION_DAYS = 35  # a little past the 30-day history window callers use
 
+# Parsed store, memoised against the file's (mtime_ns, size). Every adapter's
+# daily circuit breaker calls load_tickets() on every cycle, which meant nine
+# reads and nine JSON parses of the same small file every 5 seconds. The file
+# only changes when record_ticket() writes it — a few times a day — so the
+# stat() is enough to know the parse can be reused.
+_cache: dict | None = None
+_cache_stamp: tuple[int, int] | None = None
+
 
 def _store_path():
     return paths.app_data_dir() / "bot_tickets.json"
 
 
-def _load_raw() -> dict:
-    path = _store_path()
-    if not path.exists():
-        return {}
+def _file_stamp(path) -> tuple[int, int] | None:
+    """(mtime_ns, size) identifying this version of the file, or None if absent."""
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        st = path.stat()
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
+def _load_raw() -> dict:
+    """Parsed store contents, reusing the last parse when the file is unchanged.
+
+    Caller must hold _LOCK — the cache globals are not separately guarded.
+    """
+    global _cache, _cache_stamp
+
+    path = _store_path()
+    stamp = _file_stamp(path)
+    if stamp is None:
+        _cache, _cache_stamp = None, None
         return {}
+
+    if _cache is not None and _cache_stamp == stamp:
+        return _cache
+
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        _cache, _cache_stamp = None, None
+        return {}
+
+    # Re-stat after reading: if the file changed while we were reading it, the
+    # parse may be of a torn write, so use it once but don't memoise it.
+    _cache = data
+    _cache_stamp = stamp if _file_stamp(path) == stamp else None
+    return data
 
 
 def record_ticket(ticket: int, strategy: str | None = None) -> None:
@@ -54,7 +90,14 @@ def record_ticket(ticket: int, strategy: str | None = None) -> None:
             if _safe_parse(_entry_ts(entry)) is None or _safe_parse(_entry_ts(entry)) >= cutoff
         }
 
-        _store_path().write_text(json.dumps(data), encoding="utf-8")
+        path = _store_path()
+        path.write_text(json.dumps(data), encoding="utf-8")
+
+        # Adopt what we just wrote as the cached parse, so the nine readers
+        # that follow don't each re-read and re-parse the file we already hold.
+        global _cache, _cache_stamp
+        _cache = data
+        _cache_stamp = _file_stamp(path)
 
 
 def load_tickets(strategy: str | None = None) -> set[int]:

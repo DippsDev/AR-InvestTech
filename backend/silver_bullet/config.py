@@ -13,9 +13,26 @@ class SilverBulletConfig:
 
     # ── Session windows (America/New_York) ────────────────────────────────────
     # List of ("HH:MM", "HH:MM") open/close pairs.  DST handled automatically.
-    # Default ICT Silver Bullet windows for US30: NY 10:00–11:00 and 11:00–12:00.
+    # The two core ICT Silver Bullet windows (NY 10:00–11:00, 11:00–12:00) plus
+    # the early-afternoon 13:30–14:30 window.
+    #
+    # The third window is not an extra: every run in the 180-day selection
+    # campaign that chose DE30m/EURUSDm/GBPUSDm used all three (see the
+    # `windows` key in backtests/multi_sb_*.json), so a 2-window default meant
+    # live traded a narrower configuration than the one its symbols were
+    # validated on. Re-measured over the same 180 days with each symbol's own
+    # campaign costs, the third window is strictly better on all three —
+    # more trades AND a higher profit factor, not a frequency-for-edge trade:
+    #
+    #     DE30m    16 trades PF 5.84  ->  20 trades PF 6.16
+    #     EURUSDm  12 trades PF 3.46  ->  17 trades PF 5.50
+    #     GBPUSDm  15 trades PF 2.44  ->  17 trades PF 3.63
+    #
+    # Adding the London pair (03:00–05:00) on top more than doubles trades
+    # again but costs DE30m most of its edge (PF 6.16 -> 1.75), so it stays
+    # behind the SB_AGGRESSIVE flag rather than becoming the default.
     windows: List[Tuple[str, str]] = field(
-        default_factory=lambda: [("10:00", "11:00"), ("11:00", "12:00")]
+        default_factory=lambda: [("10:00", "11:00"), ("11:00", "12:00"), ("13:30", "14:30")]
     )
 
     # ── Swing detection ───────────────────────────────────────────────────────
@@ -47,8 +64,31 @@ class SilverBulletConfig:
     # ── Profit target ─────────────────────────────────────────────────────────
     # "rr"               : fixed risk-to-reward ratio
     # "opposite_liquidity": nearest confirmed swing on the other side
+    #
+    # Note that, unlike trendline/config.py's min_rr_for_swing_target, there is
+    # deliberately NO minimum reward:risk floor on the liquidity target here —
+    # see _compute_target in strategy.py for the measurements behind that.
     target_mode: str = "opposite_liquidity"
     rr: float = 2.0
+
+    # ── Split profit targets ──────────────────────────────────────────────────
+    # When True the position is split in two: `tp1_fraction` of it closes at
+    # `tp1_rr`, the remainder runs to `tp2_rr`. Overrides `target_mode`.
+    #
+    # ⚠ This is the reward floor the note above says not to add. Enabling it
+    # replaces the nearest-liquidity target with a 3R floor, and that target is
+    # where Silver Bullet's edge lives: measured over the full ~17-month M5
+    # history for all three live symbols, a floor of 0.50R and above took the
+    # strategy from +$4,820 net / ~62% win rate to +$118 / ~46%. The trade
+    # count does not change — a floor does not filter setups, it relocates the
+    # target past where these fast scalps actually reverse.
+    #
+    # Enabled here at explicit request. Set False to restore the measured
+    # behaviour; that is the single highest-value revert in this config.
+    split_targets: bool = True
+    tp1_rr: float = 3.0
+    tp2_rr: float = 4.0
+    tp1_fraction: float = 0.5
 
     # ── Off-hours trading ─────────────────────────────────────────────────────
     # Scan for setups outside the defined session windows.

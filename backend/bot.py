@@ -19,6 +19,7 @@ from trendline.live_adapter import TrendlineLiveAdapter
 from mutanabby.config import MutanabbyConfig
 from mutanabby.live_adapter import MutanabbyLiveAdapter
 from multi_symbol_targets import MB_TARGETS, SB_TARGETS, TL_TARGETS
+from src import mt5_cache
 from src.data_collector import (
     connect_mt5,
     disconnect_mt5,
@@ -112,6 +113,7 @@ class SilverBulletBot:
 
         self.running = False
         self._gui_mode = gui_mode  # when True, bridge owns MT5 — skip disconnect on shutdown
+        self._tick_count = 0       # loop ticks, for the periodic MT5 snapshot log
 
         # News Analyst (see news_analyst.py) is US30-specific shadow-mode
         # commentary and isn't wired to any of the multi-symbol targets —
@@ -213,6 +215,12 @@ class SilverBulletBot:
 
         try:
             while self.running:
+                # Open a new MT5 snapshot window. Every adapter below reads the
+                # account, today's deals, open positions and per-symbol
+                # info/ticks through src/mt5_cache, so each of those costs one
+                # IPC round-trip per loop tick instead of one per adapter.
+                mt5_cache.begin_tick()
+
                 # Adaptive daily-trade floor: share every instance's real,
                 # MT5-history-derived trade count with all the others so each
                 # can tell whether the combined total is behind pace for
@@ -247,6 +255,18 @@ class SilverBulletBot:
                         adapter.cycle(symbol)
                     except Exception as exc:
                         logger.error(f"[MB] Error in {symbol} cycle: {exc}", exc_info=True)
+                # Periodic snapshot-efficiency line (every 60 ticks ~= 5 min):
+                # how many MT5 round-trips the tick actually cost versus how
+                # many reads were served from the shared snapshot.
+                self._tick_count += 1
+                if self._tick_count % 60 == 0:
+                    fetches, hits = mt5_cache.tick_stats()
+                    logger.info(
+                        f"[Bot] MT5 snapshot | {fetches} round-trip(s), {hits} "
+                        f"served from cache this tick | {len(self.sb_adapters)} SB + "
+                        f"{len(self.tl_adapters)} TL + {len(self.mb_adapters)} MB adapters"
+                    )
+
                 # 5-second sleep with a 1-second heartbeat so the log shows
                 # the bot is alive at every second.
                 for remaining in range(5, 0, -1):

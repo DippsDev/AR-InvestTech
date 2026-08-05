@@ -35,7 +35,8 @@ import pandas as pd
 
 import config as root_config
 
-from src.broker_time import get_broker_utc_offset
+from src import mt5_cache
+from src.split_target import split_lots
 from src.ticket_store import load_tickets, record_ticket
 
 from .config import SilverBulletConfig
@@ -66,6 +67,10 @@ class _OpenPosition:
 class SilverBulletLiveAdapter:
     """Stateful, bar-by-bar adapter.  Instantiate once; call .cycle() every 30 s."""
 
+    # Silver Bullet reads M5 bars — used by _idle_between_bars to tell whether
+    # a new bar has closed without paying for a fetch to find out.
+    _BAR_PERIOD_SEC = 300
+
     def __init__(self, cfg: SilverBulletConfig, symbol: Optional[str] = None,
                  risk_pct_override: Optional[float] = None):
         self._cfg = cfg
@@ -80,6 +85,9 @@ class SilverBulletLiveAdapter:
         # default behavior).
         self._risk_pct_override: Optional[float] = risk_pct_override
         self._last_bar_time: Optional[pd.Timestamp] = None  # last processed bar timestamp
+        # Bar-period boundary this adapter last ran a full scan at, so an idle
+        # adapter fetches bars once per M5 bar instead of once per loop tick.
+        self._last_bar_slot: Optional[int] = None
         # Pending orders and open positions this adapter placed, keyed by MT5
         # ticket — a dict rather than a single slot so several can be live at
         # once (see module docstring).
@@ -128,7 +136,7 @@ class SilverBulletLiveAdapter:
         # server clock, not true UTC — measure the current offset once per
         # cycle so every NY-session/news-day/daily-count calc below can
         # correct for it. See src/broker_time.py.
-        self._broker_utc_offset = get_broker_utc_offset(symbol)
+        self._broker_utc_offset = mt5_cache.broker_utc_offset(symbol)
 
         # Circuit breaker: halt if drawdown exceeds configured limit.
         if self._drawdown_halted:
@@ -144,6 +152,13 @@ class SilverBulletLiveAdapter:
         # leaves an existing trade without breakeven/trailing/time-exit for
         # the rest of the day.
         can_enter_new = self._check_daily_limits(symbol)
+
+        # With nothing on the books and no newly-closed bar, everything below
+        # can only re-derive facts this adapter already holds — see
+        # _idle_between_bars.
+        if self._idle_between_bars():
+            logger.debug("[SB] Cycle skipped | idle, no new M5 bar since last scan")
+            return
 
         bars = self._fetch_bars(symbol, n=150)
         if bars is None or len(bars) < 10:
@@ -163,6 +178,12 @@ class SilverBulletLiveAdapter:
         if completed.empty:
             logger.debug("[SB] Cycle skipped | no completed bars available")
             return
+
+        # Bars are in hand, so this bar period counts as scanned regardless of
+        # what the rest of the cycle decides. Marking it here rather than in
+        # the gate means a failed or empty fetch above retries on the next
+        # tick instead of waiting out a whole bar.
+        self._mark_bar_scanned()
 
         logger.debug(
             f"[SB] Bars fetched | total={len(bars)} completed={len(completed)} | "
@@ -223,7 +244,7 @@ class SilverBulletLiveAdapter:
             if pos is None:
                 continue  # closed by MT5 during this loop (e.g. via _check_breakeven)
             logger.debug(f"[SB] Managing open position | #{ticket}")
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if positions:
                 live = positions[0]
                 side = "LONG" if live.type == mt5.ORDER_TYPE_BUY else "SHORT"
@@ -399,7 +420,7 @@ class SilverBulletLiveAdapter:
     # ------------------------------------------------------------------
 
     def _fetch_bars(self, symbol: str, n: int) -> Optional[pd.DataFrame]:
-        if not mt5.symbol_info(symbol):
+        if not mt5_cache.symbol_info(symbol):
             mt5.symbol_select(symbol, True)
         rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_M5, 0, n)
         if rates is None or len(rates) == 0:
@@ -408,6 +429,53 @@ class SilverBulletLiveAdapter:
         df["time"] = pd.to_datetime(df["time"], unit="s", utc=True)
         df = df.set_index("time")
         return df[["open", "high", "low", "close"]]
+
+    def _idle_between_bars(self) -> bool:
+        """True when this cycle provably has nothing to do and can be skipped.
+
+        The bot loop ticks every 5 seconds but Silver Bullet reads M5 bars, so
+        59 of every 60 cycles re-fetch 150 bars the signal generator has
+        already consumed — `_last_bar_time` makes it skip every one of them.
+
+        Skipping is only safe when *nothing else* in the cycle can act:
+
+        * no open positions — otherwise breakeven/trailing/time-exit must keep
+          running at full 5-second cadence, which is the whole point of a loop
+          faster than the bar period;
+        * no pending orders — otherwise fill detection and window-end
+          cancellation would be delayed by up to a bar;
+        * no newly-closed bar since the last scan — otherwise there is genuinely
+          new price action to feed the generator.
+
+        Under those conditions the remainder of the cycle reads bars, recomputes
+        session context, iterates two empty dicts and re-scans bars it has
+        already seen, so skipping changes no decision this adapter would make.
+
+        Bar arrival is derived from the clock rather than from a fetch (which is
+        the cost being avoided): the in-progress bar opens at the current
+        `bar_period` boundary, so a new bar has closed exactly when that
+        boundary moves. Tracking the boundary we last scanned at — rather than
+        comparing against `_last_bar_time` — also keeps this correct when the
+        market is closed and no new bars arrive at all, which would otherwise
+        leave the watermark stuck and refetch on every tick.
+
+        This is a pure predicate: the boundary is only marked scanned once a
+        fetch has actually succeeded (see `_mark_bar_scanned`), so a failed or
+        empty fetch retries on the next tick rather than waiting out a bar.
+        """
+        if self._open or self._pending:
+            return False
+        return self._current_bar_slot() == self._last_bar_slot
+
+    def _current_bar_slot(self) -> int:
+        """Index of the bar period in progress."""
+        from datetime import datetime, timezone
+
+        return int(datetime.now(timezone.utc).timestamp()) // self._BAR_PERIOD_SEC
+
+    def _mark_bar_scanned(self) -> None:
+        """Record that this bar period's data has been fetched and scanned."""
+        self._last_bar_slot = self._current_bar_slot()
 
     def _market_is_open(self, symbol: str) -> bool:
         """Best-effort check whether the symbol is currently tradeable.
@@ -419,8 +487,8 @@ class SilverBulletLiveAdapter:
         """
         from datetime import datetime, timezone
 
-        tick = mt5.symbol_info_tick(symbol)
-        sym = mt5.symbol_info(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
+        sym = mt5_cache.symbol_info(symbol)
         if tick is None or sym is None:
             return False
         if sym.trade_mode != mt5.SYMBOL_TRADE_MODE_FULL:
@@ -454,7 +522,7 @@ class SilverBulletLiveAdapter:
                 continue  # still waiting
 
             pend = self._pending.pop(ticket)
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if positions:
                 pos = positions[0]
                 self._open[pos.ticket] = _OpenPosition(
@@ -480,7 +548,7 @@ class SilverBulletLiveAdapter:
             return
         from src.logger import logger
         for ticket in list(self._open):
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if not positions:
                 logger.info(f"[SB] Position #{ticket} closed by MT5 (SL/TP)")
                 del self._open[ticket]
@@ -491,7 +559,7 @@ class SilverBulletLiveAdapter:
         if pos is None:
             return
 
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
         if tick is None:
             return
 
@@ -514,11 +582,11 @@ class SilverBulletLiveAdapter:
                 else current_px <= fill - trigger_dist
             )
             if triggered:
-                positions = mt5.positions_get(ticket=ticket) or []
+                positions = mt5_cache.positions_get(ticket=ticket)
                 if not positions:
                     return
                 live     = positions[0]
-                sym_info = mt5.symbol_info(symbol)
+                sym_info = mt5_cache.symbol_info(symbol)
                 d        = sym_info.digits if sym_info else 2
                 result   = mt5.order_send({
                     "action":   mt5.TRADE_ACTION_SLTP,
@@ -528,6 +596,10 @@ class SilverBulletLiveAdapter:
                     "tp":       round(live.tp, d),
                 })
                 if result.retcode == mt5.TRADE_RETCODE_DONE:
+                    # The trailing phase below re-reads this position to compare
+                    # against its current SL — drop the snapshot so it sees the
+                    # stop we just moved, not the pre-breakeven one.
+                    mt5_cache.invalidate_positions()
                     pos.breakeven_triggered = True
                     logger.debug(
                         f"[SB] Breakeven triggered | #{live.ticket} | SL moved to {fill:.2f}"
@@ -544,11 +616,11 @@ class SilverBulletLiveAdapter:
                     pos.trail_best_price = current_px
                 new_sl = pos.trail_best_price + risk_pts * cfg_eff.trail_r
 
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if not positions:
                 return
             live     = positions[0]
-            sym_info = mt5.symbol_info(symbol)
+            sym_info = mt5_cache.symbol_info(symbol)
             d        = sym_info.digits if sym_info else 2
             current_sl = live.sl
 
@@ -562,6 +634,7 @@ class SilverBulletLiveAdapter:
                     "tp":       round(live.tp, d),
                 })
                 if result.retcode == mt5.TRADE_RETCODE_DONE:
+                    mt5_cache.invalidate_positions()
                     logger.debug(
                         f"[SB] Trail stop updated | #{live.ticket} | SL moved to {new_sl:.2f}"
                     )
@@ -590,34 +663,56 @@ class SilverBulletLiveAdapter:
         )
         d = sym_info.digits
 
-        request = {
-            "action":       mt5.TRADE_ACTION_PENDING,
-            "symbol":       symbol,
-            "volume":       lots,
-            "type":         order_type,
-            "price":        round(signal.entry_price, d),
-            "sl":           round(signal.stop_price,  d),
-            "tp":           round(signal.target_price, d),
-            "deviation":    20,
-            "magic":        SB_MAGIC,
-            "comment":      "SilverBullet",
-            "type_time":    mt5.ORDER_TIME_DAY,    # auto-expires if still pending at day end
-            "type_filling": mt5.ORDER_FILLING_RETURN,
-        }
-
-        result = mt5.order_send(request)
-        if result.retcode == mt5.TRADE_RETCODE_DONE:
-            self._pending[result.order] = _PendingOrder(signal=signal, is_off_hours=is_off_hours)
-            logger.info(
-                f"[SB] LIMIT {signal.direction.upper()} | {symbol} | "
-                f"Lots={lots:.2f} | Entry={signal.entry_price:.2f} "
-                f"SL={signal.stop_price:.2f} TP={signal.target_price:.2f} "
-                f"| #{result.order}"
-            )
+        # Two pending limits at the same entry and stop, one per target — see
+        # trendline's _place_market for why the split is two orders. Both are
+        # ORDER_TIME_DAY, so an unfilled pair expires together as before.
+        legs: list[tuple[float, float]]      # (lots, tp)
+        split = None
+        if signal.target_price_2 is not None:
+            split = split_lots(lots, self._cfg.tp1_fraction,
+                               sym_info.volume_min, sym_info.volume_step)
+            if split is None:
+                logger.info(
+                    f"[SB] Split skipped | {lots:.2f} lots cannot divide into two legs at or "
+                    f"above volume_min={sym_info.volume_min} (step={sym_info.volume_step}) — "
+                    f"placing one undivided limit at TP1"
+                )
+        if split is not None:
+            legs = [(split[0], signal.target_price), (split[1], signal.target_price_2)]
         else:
-            logger.error(
-                f"[SB] Limit order failed | code={result.retcode} | {result.comment}"
-            )
+            legs = [(lots, signal.target_price)]
+
+        for leg_no, (leg_lots, tp) in enumerate(legs, start=1):
+            request = {
+                "action":       mt5.TRADE_ACTION_PENDING,
+                "symbol":       symbol,
+                "volume":       leg_lots,
+                "type":         order_type,
+                "price":        round(signal.entry_price, d),
+                "sl":           round(signal.stop_price,  d),
+                "tp":           round(tp, d),
+                "deviation":    20,
+                "magic":        SB_MAGIC,
+                "comment":      f"SilverBullet_TP{leg_no}" if len(legs) > 1 else "SilverBullet",
+                "type_time":    mt5.ORDER_TIME_DAY,    # auto-expires if still pending at day end
+                "type_filling": mt5.ORDER_FILLING_RETURN,
+            }
+
+            result = mt5.order_send(request)
+            if result.retcode == mt5.TRADE_RETCODE_DONE:
+                self._pending[result.order] = _PendingOrder(signal=signal, is_off_hours=is_off_hours)
+                leg_txt = f" leg{leg_no}/{len(legs)}" if len(legs) > 1 else ""
+                logger.info(
+                    f"[SB] LIMIT {signal.direction.upper()}{leg_txt} | {symbol} | "
+                    f"Lots={leg_lots:.2f} | Entry={signal.entry_price:.2f} "
+                    f"SL={signal.stop_price:.2f} TP={tp:.2f} "
+                    f"| #{result.order}"
+                )
+            else:
+                logger.error(
+                    f"[SB] Limit order failed (leg {leg_no}/{len(legs)}) | "
+                    f"code={result.retcode} | {result.comment}"
+                )
 
     def _place_market(self, symbol: str, signal: Signal, lots: float, is_off_hrs: bool) -> None:
         from src.logger import logger
@@ -629,14 +724,14 @@ class SilverBulletLiveAdapter:
         if not self._validate_symbol(symbol):
             return
 
-        sym_info = mt5.symbol_info(symbol)
+        sym_info = mt5_cache.symbol_info(symbol)
         if sym_info is None:
             logger.error(f"[SB] Symbol {symbol} not found")
             return
         if not sym_info.visible:
             mt5.symbol_select(symbol, True)
 
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
         if tick is None:
             logger.error(f"[SB] No tick data for {symbol}")
             return
@@ -665,40 +760,69 @@ class SilverBulletLiveAdapter:
         # Enforce broker minimum stop distance from the relevant market price.
         min_dist = sym_info.trade_stops_level * sym_info.point
         sl = signal.stop_price
-        tp = signal.target_price
         if is_long:
             if stop_price - sl < min_dist:
                 sl = round(stop_price - min_dist * 1.1, d)
-            if tp - stop_price < min_dist:
-                tp = round(stop_price + min_dist * 1.1, d)
         else:
             if sl - stop_price < min_dist:
                 sl = round(stop_price + min_dist * 1.1, d)
-            if stop_price - tp < min_dist:
-                tp = round(stop_price - min_dist * 1.1, d)
+
+        def clamp_tp(tp: float) -> float:
+            if is_long:
+                return round(stop_price + min_dist * 1.1, d) if tp - stop_price < min_dist else tp
+            return round(stop_price - min_dist * 1.1, d) if stop_price - tp < min_dist else tp
 
         logger.debug(
             f"[SB] Broker min_dist={min_dist:.1f} | "
             f"SL adjusted: {signal.stop_price:.2f}→{sl:.2f} | "
-            f"TP adjusted: {signal.target_price:.2f}→{tp:.2f}"
+            f"TP adjusted: {signal.target_price:.2f}→{clamp_tp(signal.target_price):.2f}"
         )
 
-        result = mt5.order_send({
-            "action":       mt5.TRADE_ACTION_DEAL,
-            "symbol":       symbol,
-            "volume":       lots,
-            "type":         order_type,
-            "price":        round(price, d),
-            "sl":           sl,
-            "tp":           tp,
-            "deviation":    20,
-            "magic":        SB_MAGIC,
-            "comment":      "SilverBullet_MKT",
-            "type_time":    mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        })
+        # Two independent positions sharing one SL — see trendline's
+        # _place_market for why this is two orders rather than a partial close.
+        legs: list[tuple[float, float]]      # (lots, tp)
+        split = None
+        if signal.target_price_2 is not None:
+            split = split_lots(lots, self._cfg.tp1_fraction,
+                               sym_info.volume_min, sym_info.volume_step)
+            if split is None:
+                logger.info(
+                    f"[SB] Split skipped | {lots:.2f} lots cannot divide into two legs at or "
+                    f"above volume_min={sym_info.volume_min} (step={sym_info.volume_step}) — "
+                    f"placing one undivided order at TP1"
+                )
+        if split is not None:
+            legs = [(split[0], clamp_tp(signal.target_price)),
+                    (split[1], clamp_tp(signal.target_price_2))]
+        else:
+            legs = [(lots, clamp_tp(signal.target_price))]
 
-        if result.retcode == mt5.TRADE_RETCODE_DONE:
+        for leg_no, (leg_lots, tp) in enumerate(legs, start=1):
+            result = mt5.order_send({
+                "action":       mt5.TRADE_ACTION_DEAL,
+                "symbol":       symbol,
+                "volume":       leg_lots,
+                "type":         order_type,
+                "price":        round(price, d),
+                "sl":           sl,
+                "tp":           tp,
+                "deviation":    20,
+                "magic":        SB_MAGIC,
+                "comment":      f"SilverBullet_MKT_TP{leg_no}" if len(legs) > 1 else "SilverBullet_MKT",
+                "type_time":    mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            })
+
+            if result.retcode != mt5.TRADE_RETCODE_DONE:
+                logger.error(
+                    f"[SB] Market order failed (leg {leg_no}/{len(legs)}) | "
+                    f"code={result.retcode} | {result.comment}"
+                )
+                continue
+
+            # Read straight from MT5, not the snapshot: this position did not
+            # exist when the tick's snapshot was taken.
+            mt5_cache.invalidate_positions()
             positions = mt5.positions_get(ticket=result.order) or []
             fill_price = positions[0].price_open if positions else price
             self._open[result.order] = _OpenPosition(
@@ -709,14 +833,11 @@ class SilverBulletLiveAdapter:
             if is_off_hrs:
                 self._off_hours_fills += 1
             record_ticket(result.order, strategy="SB")
+            leg_txt = f" leg{leg_no}/{len(legs)}" if len(legs) > 1 else ""
             logger.info(
-                f"[SB] MARKET {signal.direction.upper()} | {symbol} | "
-                f"Lots={lots:.2f} | Fill={fill_price:.2f} "
+                f"[SB] MARKET {signal.direction.upper()}{leg_txt} | {symbol} | "
+                f"Lots={leg_lots:.2f} | Fill={fill_price:.2f} "
                 f"SL={sl:.2f} TP={tp:.2f} | #{result.order}"
-            )
-        else:
-            logger.error(
-                f"[SB] Market order failed | code={result.retcode} | {result.comment}"
             )
 
     def _cancel_pending(self, ticket: int) -> None:
@@ -741,13 +862,13 @@ class SilverBulletLiveAdapter:
             return
         from src.logger import logger
 
-        positions = mt5.positions_get(ticket=ticket) or []
+        positions = mt5_cache.positions_get(ticket=ticket)
         if not positions:
             del self._open[ticket]
             return
 
         pos  = positions[0]
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
         if tick is None:
             return
 
@@ -770,6 +891,7 @@ class SilverBulletLiveAdapter:
         })
 
         if result.retcode == mt5.TRADE_RETCODE_DONE:
+            mt5_cache.invalidate_positions()
             logger.info(f"[SB] Time exit | #{pos.ticket} | PnL ${pos.profit:.2f}")
             del self._open[ticket]
         else:
@@ -889,22 +1011,30 @@ class SilverBulletLiveAdapter:
         effect (aggressive/off-hours). Halves the minimum-risk and FVG-size
         floors rather than removing them, so a setup still has to clear a
         real (if lower) bar — this only widens which genuine signals
-        qualify, it never fabricates one."""
+        qualify, it never fabricates one.
+
+        No absolute floor is applied. `base` already carries this symbol's
+        volatility-scaled thresholds from SB_TARGETS, so a raw `max(1.0, ...)`
+        guard here is not a safety net — it is a US30-sized constant that
+        exceeds any achievable stop distance on FX. EURUSDm's median M5 bar is
+        0.00028; a 1.0 floor rejected every boosted signal on EURUSDm and
+        GBPUSDm, turning the trade-floor booster into a total block for the
+        two symbols it was most needed on."""
         return _dc_replace(
             base,
-            min_risk_points=max(1.0, base.min_risk_points * 0.5),
-            fvg_min_points=max(1.0, base.fvg_min_points * 0.5),
+            min_risk_points=base.min_risk_points * 0.5,
+            fvg_min_points=base.fvg_min_points * 0.5,
         )
 
     def _compute_lots(self, symbol: str, signal: Signal) -> Optional[float]:
         from src.logger import logger
 
-        sym_info = mt5.symbol_info(symbol)
+        sym_info = mt5_cache.symbol_info(symbol)
         if sym_info is None:
             logger.error(f"[SB] No symbol info for {symbol}")
             return None
 
-        account = mt5.account_info()
+        account = mt5_cache.account_info()
         if account is None:
             return None
 
@@ -995,7 +1125,7 @@ class SilverBulletLiveAdapter:
         MT5 history for today's closed Silver Bullet deals.  The limits reset
         at the start of each NY trading day.
         """
-        from datetime import datetime, timezone
+        from datetime import datetime
         from src.logger import logger
 
         today_ny = datetime.now(NY_TZ).date().isoformat()
@@ -1013,17 +1143,12 @@ class SilverBulletLiveAdapter:
 
         # Recompute from MT5 history so a restart does not bypass the limit.
         # deal.time (like bar/tick time) is stamped in the broker's server
-        # clock, so the from/to boundaries passed to history_deals_get must
-        # be expressed in that same clock — shift our true-UTC boundaries by
-        # the measured broker offset rather than a hardcoded guess.
-        ny_midnight = datetime.now(NY_TZ).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        from_date = ny_midnight.astimezone(timezone.utc) + self._broker_utc_offset
-        to_date = datetime.now(timezone.utc) + self._broker_utc_offset
-
+        # clock, so the from/to boundaries must be expressed in that same clock
+        # — mt5_cache shifts our true-UTC boundaries by the measured broker
+        # offset rather than a hardcoded guess, and fetches the window once per
+        # loop tick for all three strategies instead of once per adapter.
         try:
-            deals = mt5.history_deals_get(from_date, to_date) or []
+            deals = mt5_cache.history_deals_today(self._broker_utc_offset, NY_TZ)
         except Exception as exc:
             logger.warning(f"[SB] Failed to fetch history deals: {exc}")
             deals = []
@@ -1088,7 +1213,7 @@ class SilverBulletLiveAdapter:
         if self._drawdown_halted:
             return False
 
-        account = mt5.account_info()
+        account = mt5_cache.account_info()
         if account is None:
             return False
 

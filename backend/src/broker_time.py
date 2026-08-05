@@ -17,6 +17,23 @@ from datetime import datetime, timedelta, timezone
 import MetaTrader5 as mt5
 
 
+def offset_from_tick(tick) -> timedelta:
+    """The offset implied by an already-fetched tick.
+
+    Split out from get_broker_utc_offset so callers that already hold a tick
+    can reuse it rather than issuing another `symbol_info_tick` — the live
+    adapters read theirs from src/mt5_cache's per-loop-tick snapshot, and this
+    keeps the arithmetic defined in exactly one place.
+
+    Returns timedelta(0) for a missing tick — callers should treat that as
+    "uncorrected this cycle", not "confirmed zero offset".
+    """
+    if tick is None:
+        return timedelta(0)
+    broker_time = datetime.fromtimestamp(tick.time, tz=timezone.utc)
+    return broker_time - datetime.now(timezone.utc)
+
+
 def get_broker_utc_offset(symbol: str) -> timedelta:
     """How far ahead (positive) or behind (negative) of true UTC this
     broker's server clock currently is, measured from a live tick.
@@ -24,8 +41,4 @@ def get_broker_utc_offset(symbol: str) -> timedelta:
     Returns timedelta(0) if no tick is available — callers should treat
     that as "uncorrected this cycle", not "confirmed zero offset".
     """
-    tick = mt5.symbol_info_tick(symbol)
-    if tick is None:
-        return timedelta(0)
-    broker_time = datetime.fromtimestamp(tick.time, tz=timezone.utc)
-    return broker_time - datetime.now(timezone.utc)
+    return offset_from_tick(mt5.symbol_info_tick(symbol))

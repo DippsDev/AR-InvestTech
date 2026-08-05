@@ -380,6 +380,15 @@ html, body {
   }
 }
 
+/* ── Table / mobile cards ────────────────────────── */
+/* These base rules MUST stay above the ≤900px block below. Media queries add
+   no specificity, so a later `.trade-cards { display: none }` would beat the
+   `display: flex` override inside the media query and hide both the desktop
+   table and the mobile cards, leaving an empty Trade History card on phones. */
+.tbl-wrap    { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tbl-row     { min-width: 600px; }
+.trade-cards { display: none; }
+
 /* ── Dashboard mobile layout ─────────────────────── */
 @media (max-width: 900px) {
   /* The unconditional `html, body { overflow: hidden }` above only gets
@@ -548,12 +557,33 @@ html, body {
 .grid-mt5  { display: grid; grid-template-columns: 1fr 1fr;        gap: 14px; }
 .grid-perf { display: grid; grid-template-columns: 1.6fr 1fr;      gap: 12px; }
 
-/* ── Table / mobile cards ────────────────────────── */
-.tbl-wrap    { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.tbl-row     { min-width: 600px; }
-.trade-cards { display: none; }
+/* ── Activation screen / card ────────────────────── */
+/* The ≤900px block above drops .full-viewport to height:auto so the dashboard
+   can scroll as one long page. A percentage height only resolves against a
+   parent with a definite height, so this screen's previous height:100% silently
+   became auto on mobile — the card wrapper's flex:1 then had no free space to
+   distribute and the card sat at the top instead of centering. Own the viewport
+   height here rather than inheriting it, so centering works at every width. */
+.activation-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  /* Anchor for the version footer, which is taken out of flow so it can't
+     bias the card's centring (see .activation-version). */
+  position: relative;
+}
 
-/* ── Activation card ─────────────────────────────── */
+/* In flow this footer ate ~23px at the bottom of the flex column, so the card
+   centred against the remaining space and read as sitting high. Out of flow it
+   still pins to the bottom-left, but the card now centres against the full
+   height. Insets match the screen's 20px/28px padding. If the card ever grows
+   taller than the viewport the screen grows with it, so the footer stays below
+   the card rather than overlapping it. */
+.activation-version {
+  position: absolute;
+  left: 28px;
+  bottom: 20px;
+}
+
 .activation-card { padding: 36px 44px; }
 
 @media (max-width: 768px) {

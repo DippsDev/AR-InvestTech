@@ -62,6 +62,19 @@ class TrendlineConfig:
     rr: float = 3.0   # the document's own stated R:R floor ("always R:R above 1:3")
     min_rr_for_swing_target: float = 3.0
 
+    # ── Split profit targets ──────────────────────────────────────────────────
+    # When True the position is split in two: `tp1_fraction` of it closes at
+    # `tp1_rr`, the remainder runs to `tp2_rr`. Both halves share one stop, so
+    # breakeven/trailing continue to move the survivor's stop after TP1 fills.
+    #
+    # Setting this True overrides `target_mode` — the opposite-swing lookup is
+    # skipped and both targets are pure R multiples. Set False to go back to a
+    # single target chosen by `target_mode`.
+    split_targets: bool = True
+    tp1_rr: float = 3.0
+    tp2_rr: float = 4.0
+    tp1_fraction: float = 0.5   # portion of the position closed at TP1
+
     # ── Trade management ──────────────────────────────────────────────────────
     # Move stop to entry once price travels this many R in our favour.
     breakeven_r: float = 1.0

@@ -69,8 +69,8 @@ export default function Activation({ onActivated, doValidate }: Props) {
   }, [key, loading, doValidate, onActivated]);
 
   return (
-    <div className="flex-1 flex flex-col animate-fade"
-         style={{ height: "100%", background: "var(--dash-bg)", padding: "20px 28px" }}>
+    <div className="activation-screen flex-1 flex flex-col animate-fade"
+         style={{ background: "var(--dash-bg)", padding: "20px 28px" }}>
 
       <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>
       <div className="activation-card" style={{
@@ -168,7 +168,7 @@ export default function Activation({ onActivated, doValidate }: Props) {
       </div>
       </div>
 
-      <div style={{ fontSize: 10, color: "var(--dash-border-light)", paddingTop: 8 }}>v1.0.0</div>
+      <div className="activation-version" style={{ fontSize: 10, color: "var(--dash-border-light)" }}>v1.0.0</div>
     </div>
   );
 }
