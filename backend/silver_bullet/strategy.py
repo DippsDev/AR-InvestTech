@@ -141,12 +141,30 @@ class SignalGenerator:
     at each bar close.  Returns a Signal if a setup is complete, else None.
     """
 
-    def __init__(self, cfg: SilverBulletConfig):
+    def __init__(self, cfg: SilverBulletConfig, digits: int = 2):
         if cfg.split_targets:
             validate_split(cfg.tp1_rr, cfg.tp2_rr, cfg.tp1_fraction)
         self._cfg = cfg
+        # Decimal places for prices in log output. Defaults to 2 for indices;
+        # the live adapter overrides it per symbol (see set_digits).
+        self._digits = digits
         # Key: (date_str, window_id) → _SessionState
         self._sessions: dict[tuple, _SessionState] = {}
+
+    def set_digits(self, digits: int) -> None:
+        """Match log precision to the symbol MT5 reports.
+
+        Formatting to a fixed 2dp renders every price on a 5-digit FX pair as
+        the same number — entry, stop and target all print as "1.15" — which
+        makes it impossible to check a fill against its signal or verify the
+        R:R from the log. Indices are unaffected, which is why this survived
+        US30-only development.
+        """
+        self._digits = digits
+
+    def _p(self, value: float) -> str:
+        """Format a price (or a price distance) at the symbol's precision."""
+        return f"{value:.{self._digits}f}"
 
     def _log(self, msg: str, level: str = "info") -> None:
         from src.logger import logger
@@ -191,7 +209,7 @@ class SignalGenerator:
                 sess.bias = "bullish"
                 sess.sweep_level = level
                 sess.sweep_bar = bar_idx
-                self._log(f"[SB] Sweep BULLISH | swept low={level:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
+                self._log(f"[SB] Sweep BULLISH | swept low={self._p(level)} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
                 if cfg.sweep_entry_mode:
                     return self._sweep_signal("long", closes[bar_idx], level, highs, lows, bar_idx, cfg, sess, window_id)
             else:
@@ -202,7 +220,7 @@ class SignalGenerator:
                     sess.bias = "bearish"
                     sess.sweep_level = level
                     sess.sweep_bar = bar_idx
-                    self._log(f"[SB] Sweep BEARISH | swept high={level:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
+                    self._log(f"[SB] Sweep BEARISH | swept high={self._p(level)} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
                     if cfg.sweep_entry_mode:
                         return self._sweep_signal("short", closes[bar_idx], level, highs, lows, bar_idx, cfg, sess, window_id)
 
@@ -224,7 +242,7 @@ class SignalGenerator:
         if fvg is None:
             return None
 
-        self._log(f"[SB] FVG {sess.bias.upper()} | zone={fvg[0]:.2f}–{fvg[1]:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
+        self._log(f"[SB] FVG {sess.bias.upper()} | zone={self._p(fvg[0])}–{self._p(fvg[1])} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
 
         # --- Step 3: build the full signal ---
         bottom, top = fvg
@@ -251,18 +269,18 @@ class SignalGenerator:
 
         # Sanity: entry must be on the correct side of the stop
         if direction == "long" and entry <= stop:
-            self._log(f"[SB] Signal rejected | entry {entry:.2f} not above stop {stop:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
+            self._log(f"[SB] Signal rejected | entry {self._p(entry)} not above stop {self._p(stop)} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
             return None
         if direction == "short" and entry >= stop:
-            self._log(f"[SB] Signal rejected | entry {entry:.2f} not below stop {stop:.2f} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
+            self._log(f"[SB] Signal rejected | entry {self._p(entry)} not below stop {self._p(stop)} | bar={bar_idx} | {date_str} w{window_id}", level="debug")
             return None
 
         # Minimum risk guard — skips degenerate setups where FVG nearly touches stop
         risk_points = abs(entry - stop)
         if risk_points < cfg.min_risk_points:
             self._log(
-                f"[SB] Signal rejected | risk {risk_points:.2f}pts below minimum "
-                f"{cfg.min_risk_points:.2f}pts | bar={bar_idx} | {date_str} w{window_id}",
+                f"[SB] Signal rejected | risk {self._p(risk_points)}pts below minimum "
+                f"{self._p(cfg.min_risk_points)}pts | bar={bar_idx} | {date_str} w{window_id}",
                 level="debug",
             )
             return None
@@ -286,9 +304,9 @@ class SignalGenerator:
             sess.signal_emitted = True
 
         self._log(
-            f"[SB] Signal {direction.upper()} | entry={entry:.2f} stop={stop:.2f} "
-            f"target={target:.2f} | sweep={sess.sweep_level:.2f} "
-            f"fvg={fvg[0]:.2f}-{fvg[1]:.2f} | bar={bar_idx} | {date_str} w{window_id}"
+            f"[SB] Signal {direction.upper()} | entry={self._p(entry)} stop={self._p(stop)} "
+            f"target={self._p(target)} | sweep={self._p(sess.sweep_level)} "
+            f"fvg={self._p(fvg[0])}-{self._p(fvg[1])} | bar={bar_idx} | {date_str} w{window_id}"
         )
         return signal
 
@@ -311,17 +329,17 @@ class SignalGenerator:
             stop = sweep_level + cfg.stop_buffer_points
 
         if direction == "long" and entry <= stop:
-            self._log(f"[SB] Sweep-entry rejected | entry {entry:.2f} not above stop {stop:.2f} | bar={bar_idx} w{window_id}", level="debug")
+            self._log(f"[SB] Sweep-entry rejected | entry {self._p(entry)} not above stop {self._p(stop)} | bar={bar_idx} w{window_id}", level="debug")
             return None
         if direction == "short" and entry >= stop:
-            self._log(f"[SB] Sweep-entry rejected | entry {entry:.2f} not below stop {stop:.2f} | bar={bar_idx} w{window_id}", level="debug")
+            self._log(f"[SB] Sweep-entry rejected | entry {self._p(entry)} not below stop {self._p(stop)} | bar={bar_idx} w{window_id}", level="debug")
             return None
 
         risk = abs(entry - stop)
         if risk < cfg.min_risk_points:
             self._log(
-                f"[SB] Sweep-entry rejected | risk {risk:.2f}pts below minimum "
-                f"{cfg.min_risk_points:.2f}pts | bar={bar_idx} w{window_id}",
+                f"[SB] Sweep-entry rejected | risk {self._p(risk)}pts below minimum "
+                f"{self._p(cfg.min_risk_points)}pts | bar={bar_idx} w{window_id}",
                 level="debug",
             )
             return None
@@ -337,8 +355,8 @@ class SignalGenerator:
             sess.signal_emitted = True
 
         self._log(
-            f"[SB] Signal {direction.upper()} | entry={entry:.2f} stop={stop:.2f} "
-            f"target={target:.2f} | sweep={sweep_level:.2f} (sweep-entry) | "
+            f"[SB] Signal {direction.upper()} | entry={self._p(entry)} stop={self._p(stop)} "
+            f"target={self._p(target)} | sweep={self._p(sweep_level)} (sweep-entry) | "
             f"bar={bar_idx} w{window_id}"
         )
         return Signal(
