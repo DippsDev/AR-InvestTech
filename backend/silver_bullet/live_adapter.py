@@ -114,10 +114,29 @@ class SilverBulletLiveAdapter:
         # combined SB+TL trade count for today (see _boost_active below).
         self.combined_daily_trades: int = 0
         self._boost_notified: bool = False
+        # Decimal places for prices in log output, refreshed from symbol_info
+        # once per cycle. 2 until the first cycle resolves the real value.
+        self._digits: int = 2
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    def _px(self, value: float) -> str:
+        """Format a price at the symbol's precision.
+
+        A fixed 2dp collapses every price on a 5-digit FX pair to the same
+        number — entry, stop and target all log as "1.15" — so a fill cannot
+        be checked against the signal that produced it.
+        """
+        return f"{value:.{self._digits}f}"
+
+    def _sync_digits(self, symbol: str) -> None:
+        """Pick up the symbol's price precision for this cycle's logging."""
+        sym_info = mt5_cache.symbol_info(symbol)
+        if sym_info is not None:
+            self._digits = sym_info.digits
+            self._generator.set_digits(sym_info.digits)
 
     def cycle(self, symbol: str) -> None:
         """Called from the main bot loop.  Manages the full lifecycle of one SB setup."""
@@ -131,6 +150,8 @@ class SilverBulletLiveAdapter:
         if not self._validate_symbol(symbol):
             logger.debug("[SB] Cycle aborted | symbol validation failed")
             return
+
+        self._sync_digits(symbol)
 
         # MT5 timestamps (bars, ticks, deals) are stamped in the broker's own
         # server clock, not true UTC — measure the current offset once per
@@ -212,7 +233,7 @@ class SilverBulletLiveAdapter:
         in_off_hours = self._cfg.off_hours_trading and not in_window and not past_cutoff
         window_desc = self._window_status_desc(last_ny)
         logger.debug(
-            f"[SB] Session context | last_bar={last_ny.strftime('%H:%M')} NY | price={closes[-1]:.2f} | "
+            f"[SB] Session context | last_bar={last_ny.strftime('%H:%M')} NY | price={self._px(closes[-1])} | "
             f"in_window={in_window} | off_hours={in_off_hours} | past_cutoff={past_cutoff} | "
             f"{window_desc} | Today: {self._daily_trades} trades, PnL ${self._daily_loss_usd:+.2f}"
         )
@@ -374,8 +395,8 @@ class SilverBulletLiveAdapter:
                 if lots is not None:
                     logger.info(
                         f"[SB] About to place order | {signal.direction.upper()} | "
-                        f"entry={signal.entry_price:.2f} stop={signal.stop_price:.2f} "
-                        f"target={signal.target_price:.2f} | lots={lots:.2f}"
+                        f"entry={self._px(signal.entry_price)} stop={self._px(signal.stop_price)} "
+                        f"target={self._px(signal.target_price)} | lots={lots:.2f}"
                     )
                     if self._cfg.use_market_order:
                         self._place_market(symbol, signal, lots, bar_off_hrs)
@@ -398,7 +419,7 @@ class SilverBulletLiveAdapter:
         if processed_count > 0 and signal_count == 0:
             logger.info(
                 f"[SB] No setup on {processed_count} new bar(s) | {window_desc} | "
-                f"price={closes[-1]:.2f}"
+                f"price={self._px(closes[-1])}"
             )
 
         # Advance the watermark
@@ -536,7 +557,7 @@ class SilverBulletLiveAdapter:
                 label = " [off-hours]" if pend.is_off_hours else ""
                 logger.info(
                     f"[SB] Limit filled → position #{pos.ticket} "
-                    f"@ {pos.price_open:.2f}{label}"
+                    f"@ {self._px(pos.price_open)}{label}"
                 )
             else:
                 # Order disappeared without creating a position (expired / rejected)
@@ -602,7 +623,7 @@ class SilverBulletLiveAdapter:
                     mt5_cache.invalidate_positions()
                     pos.breakeven_triggered = True
                     logger.debug(
-                        f"[SB] Breakeven triggered | #{live.ticket} | SL moved to {fill:.2f}"
+                        f"[SB] Breakeven triggered | #{live.ticket} | SL moved to {self._px(fill)}"
                     )
 
         # Phase 2 — trailing stop (only after breakeven)
@@ -636,7 +657,7 @@ class SilverBulletLiveAdapter:
                 if result.retcode == mt5.TRADE_RETCODE_DONE:
                     mt5_cache.invalidate_positions()
                     logger.debug(
-                        f"[SB] Trail stop updated | #{live.ticket} | SL moved to {new_sl:.2f}"
+                        f"[SB] Trail stop updated | #{live.ticket} | SL moved to {self._px(new_sl)}"
                     )
 
     def _place_limit(self, symbol: str, signal: Signal, lots: float, is_off_hours: bool) -> None:
@@ -704,8 +725,8 @@ class SilverBulletLiveAdapter:
                 leg_txt = f" leg{leg_no}/{len(legs)}" if len(legs) > 1 else ""
                 logger.info(
                     f"[SB] LIMIT {signal.direction.upper()}{leg_txt} | {symbol} | "
-                    f"Lots={leg_lots:.2f} | Entry={signal.entry_price:.2f} "
-                    f"SL={signal.stop_price:.2f} TP={tp:.2f} "
+                    f"Lots={leg_lots:.2f} | Entry={self._px(signal.entry_price)} "
+                    f"SL={self._px(signal.stop_price)} TP={self._px(tp)} "
                     f"| #{result.order}"
                 )
             else:
@@ -752,7 +773,7 @@ class SilverBulletLiveAdapter:
         entry_slip = abs(price - signal.entry_price)
         if entry_slip > risk_pts * 0.5:
             logger.info(
-                f"[SB] Signal stale | Price={price:.2f} Entry={signal.entry_price:.2f} "
+                f"[SB] Signal stale | Price={self._px(price)} Entry={self._px(signal.entry_price)} "
                 f"slip={entry_slip:.1f}pts (risk={risk_pts:.1f}pts) — skipping market entry"
             )
             return
@@ -774,8 +795,8 @@ class SilverBulletLiveAdapter:
 
         logger.debug(
             f"[SB] Broker min_dist={min_dist:.1f} | "
-            f"SL adjusted: {signal.stop_price:.2f}→{sl:.2f} | "
-            f"TP adjusted: {signal.target_price:.2f}→{clamp_tp(signal.target_price):.2f}"
+            f"SL adjusted: {self._px(signal.stop_price)}→{self._px(sl)} | "
+            f"TP adjusted: {self._px(signal.target_price)}→{self._px(clamp_tp(signal.target_price))}"
         )
 
         # Two independent positions sharing one SL — see trendline's
@@ -836,8 +857,8 @@ class SilverBulletLiveAdapter:
             leg_txt = f" leg{leg_no}/{len(legs)}" if len(legs) > 1 else ""
             logger.info(
                 f"[SB] MARKET {signal.direction.upper()}{leg_txt} | {symbol} | "
-                f"Lots={leg_lots:.2f} | Fill={fill_price:.2f} "
-                f"SL={sl:.2f} TP={tp:.2f} | #{result.order}"
+                f"Lots={leg_lots:.2f} | Fill={self._px(fill_price)} "
+                f"SL={self._px(sl)} TP={self._px(tp)} | #{result.order}"
             )
 
     def _cancel_pending(self, ticket: int) -> None:
