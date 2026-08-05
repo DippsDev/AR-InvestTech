@@ -57,7 +57,16 @@ class Trade:
     # --- Exit ---
     exit_time: Optional[pd.Timestamp] = None
     exit_price: Optional[float] = None
-    exit_reason: Optional[str] = None   # "target" | "stop" | "time_exit"
+    exit_reason: Optional[str] = None   # "target" | "target2" | "stop" | "time_exit"
+
+    # --- Split target (TP1/TP2) ---
+    # See trendline/backtest.py's Trade for the shared semantics: one Trade row
+    # per setup, `tp1_fraction` banked at TP1, remainder rides to TP2.
+    target_price_2: Optional[float] = None
+    tp1_fraction: float = 1.0
+    tp1_hit: bool = False
+    tp1_exit_price: Optional[float] = None
+    tp1_exit_time: Optional[pd.Timestamp] = None
 
     # --- Context (for diagnostics) ---
     sweep_level: float = 0.0
@@ -218,9 +227,17 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
                         trade.exit_reason = "stop"
                         closed = True
 
+            # TP1 until it fills, TP2 afterwards. Unsplit, this is always TP1
+            # and the branch below closes the whole position as it always did.
+            # A time exit closes whatever is left, banked TP1 leg included.
+            splitting = trade.target_price_2 is not None
+            active_target = (
+                trade.target_price_2 if (splitting and trade.tp1_hit) else trade.target_price
+            )
+
             if trade.direction == "long":
                 stop_hit   = bar_low  <= trade.stop_price
-                target_hit = bar_high >= trade.target_price
+                target_hit = bar_high >= active_target
 
                 if stop_hit and target_hit:
                     # Ambiguous — conservative: stop wins
@@ -232,9 +249,18 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
                     trade.exit_reason = "stop"
                     closed = True
                 elif target_hit:
-                    trade.exit_price  = max(trade.target_price, bar_open) if bar_open > trade.target_price else trade.target_price
-                    trade.exit_reason = "target"
-                    closed = True
+                    fill = max(active_target, bar_open) if bar_open > active_target else active_target
+                    if splitting and not trade.tp1_hit:
+                        trade.tp1_hit, trade.tp1_exit_price, trade.tp1_exit_time = True, fill, bar_ts
+                        if bar_high >= trade.target_price_2:
+                            tp2 = trade.target_price_2
+                            trade.exit_price  = max(tp2, bar_open) if bar_open > tp2 else tp2
+                            trade.exit_reason = "target2"
+                            closed = True
+                    else:
+                        trade.exit_price  = fill
+                        trade.exit_reason = "target2" if splitting else "target"
+                        closed = True
                 elif time_exit:
                     # Window closed — time exit at this bar's open (next bar relative to placement)
                     trade.exit_price  = bar_open
@@ -243,7 +269,7 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
 
             else:  # short
                 stop_hit   = bar_high >= trade.stop_price
-                target_hit = bar_low  <= trade.target_price
+                target_hit = bar_low  <= active_target
 
                 if stop_hit and target_hit:
                     trade.exit_price  = trade.stop_price
@@ -254,9 +280,18 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
                     trade.exit_reason = "stop"
                     closed = True
                 elif target_hit:
-                    trade.exit_price  = min(trade.target_price, bar_open) if bar_open < trade.target_price else trade.target_price
-                    trade.exit_reason = "target"
-                    closed = True
+                    fill = min(active_target, bar_open) if bar_open < active_target else active_target
+                    if splitting and not trade.tp1_hit:
+                        trade.tp1_hit, trade.tp1_exit_price, trade.tp1_exit_time = True, fill, bar_ts
+                        if bar_low <= trade.target_price_2:
+                            tp2 = trade.target_price_2
+                            trade.exit_price  = min(tp2, bar_open) if bar_open < tp2 else tp2
+                            trade.exit_reason = "target2"
+                            closed = True
+                    else:
+                        trade.exit_price  = fill
+                        trade.exit_reason = "target2" if splitting else "target"
+                        closed = True
                 elif time_exit:
                     trade.exit_price  = bar_open
                     trade.exit_reason = "time_exit"
@@ -310,6 +345,8 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
                         entry_price   = fill_price,
                         stop_price    = sig.stop_price,
                         target_price  = sig.target_price,
+                        target_price_2 = sig.target_price_2,
+                        tp1_fraction  = cfg.tp1_fraction if sig.target_price_2 is not None else 1.0,
                         sweep_level   = sig.sweep_level,
                         sweep_bar     = sig.sweep_bar,
                         fvg_zone      = sig.fvg_zone,
@@ -347,13 +384,23 @@ def run_backtest(df: pd.DataFrame, cfg: SilverBulletConfig) -> list[Trade]:
             finally:
                 generator._cfg = old_cfg
 
-            # On high-impact news days extend the profit target to capture the larger move
+            # On high-impact news days extend the profit target to capture the larger move.
+            #
+            # With a split this has to move TP2, not TP1: news_rr (5.0) is meant
+            # to sit further out than the normal target, and writing it onto TP1
+            # would push the first leg past the runner and invert the two. If
+            # news_rr does not clear tp1_rr there is no room to extend into, so
+            # the override is skipped rather than producing crossed targets.
             if signal is not None and on_news_day and cfg.news_rr > 0:
                 risk = abs(signal.entry_price - signal.stop_price)
-                signal.target_price = (
+                extended = (
                     signal.entry_price + cfg.news_rr * risk if signal.direction == "long"
                     else signal.entry_price - cfg.news_rr * risk
                 )
+                if signal.target_price_2 is None:
+                    signal.target_price = extended
+                elif cfg.news_rr > cfg.tp1_rr:
+                    signal.target_price_2 = extended
             if signal is not None:
                 pending = _PendingOrder(
                     signal       = signal,
@@ -427,19 +474,37 @@ def _off_hours_cfg(cfg: SilverBulletConfig) -> SilverBulletConfig:
 
 
 def _finalise_trade(trade: Trade, cfg: SilverBulletConfig) -> None:
-    """Compute pnl_points, r_multiple, pnl_dollars in-place."""
-    ep = trade.entry_price
-    xp = trade.exit_price
+    """Compute pnl_points, r_multiple, pnl_dollars in-place.
 
-    if trade.direction == "long":
-        raw_points = xp - ep
+    When TP1 filled the two legs are size-weighted: `pnl_points` stays a
+    per-unit figure so `r_multiple` remains comparable with unsplit trades,
+    while `pnl_dollars` totals the whole original position. Commission is
+    charged once per leg that opened, since a split is two live orders.
+    """
+    ep = trade.entry_price
+    sign = 1.0 if trade.direction == "long" else -1.0
+
+    legs: list[tuple[float, float]] = []   # (fraction, exit_price)
+    if trade.tp1_hit and trade.tp1_exit_price is not None:
+        legs.append((trade.tp1_fraction, trade.tp1_exit_price))
+        legs.append((1.0 - trade.tp1_fraction, trade.exit_price))
     else:
-        raw_points = ep - xp
+        legs.append((1.0, trade.exit_price))
 
     # Commission is per round-trip
-    commission_points = cfg.commission_per_trade / (trade.units * cfg.point_value) if trade.units > 0 else 0.0
-    trade.pnl_points  = raw_points - commission_points
-    trade.pnl_dollars = trade.pnl_points * trade.units * cfg.point_value
+    per_unit_commission = (
+        cfg.commission_per_trade / (trade.units * cfg.point_value) if trade.units > 0 else 0.0
+    )
+
+    pnl_points = 0.0
+    for fraction, exit_price in legs:
+        if fraction <= 0:
+            continue
+        gross = sign * (exit_price - ep)
+        pnl_points += fraction * (gross - per_unit_commission / fraction)
+
+    trade.pnl_points  = pnl_points
+    trade.pnl_dollars = pnl_points * trade.units * cfg.point_value
 
     if trade.risk_points > 0:
         trade.r_multiple = trade.pnl_points / trade.risk_points

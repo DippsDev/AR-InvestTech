@@ -21,13 +21,33 @@ SB_TARGETS: dict[str, dict[str, float]] = {
 }
 
 # symbol -> TrendlineConfig field overrides
+#
+# touch/obstruction tolerance is 3x the volatility-scaled base on DE30m and
+# USTECm. The scaling below makes every symbol's tolerance the same fraction of
+# its own bar range, but that fraction is inherited from TrendlineConfig's
+# US30 defaults, which its own docstring flags as never having been backtested.
+# At 1x it lands at ~6.4% of a median H1 bar and the touch gate almost never
+# opens: over 180 days DE30m saw 2,014 bars carrying a live support line and
+# 402 bullish reversal candles, but only 19 touches. Re-measured across a
+# 1x-8x sweep with each symbol's campaign costs:
+#
+#            1x                 3x                 8x
+#   DE30m     5tr PF 4.27       23tr PF 1.58       52tr PF 0.85
+#   USTECm    7tr PF 1.58       21tr PF 1.19       61tr PF 0.84
+#   USDJPYm  19tr PF 2.98       41tr PF 1.14       82tr PF 0.96
+#
+# 3x is where DE30m and USTECm buy 3-4x the trades for the same net profit;
+# by 8x every symbol is losing money, so this is a ridge, not a free knob.
+# USDJPYm is deliberately left at 1x — it is the one symbol already at its
+# own optimum, and widening it cuts net from $1,933 to $404. Do not
+# "harmonise" the three.
 TL_TARGETS: dict[str, dict[str, float]] = {
-    "DE30m":   dict(obstruction_tolerance_points=2.240964, breach_tolerance_points=3.734940,
-                     touch_tolerance_points=2.240964, stop_buffer_points=3.734940, min_risk_points=11.204819),
+    "DE30m":   dict(obstruction_tolerance_points=6.722892, breach_tolerance_points=3.734940,
+                     touch_tolerance_points=6.722892, stop_buffer_points=3.734940, min_risk_points=11.204819),
     "USDJPYm": dict(obstruction_tolerance_points=0.0046988, breach_tolerance_points=0.0078313,
                      touch_tolerance_points=0.0046988, stop_buffer_points=0.0078313, min_risk_points=0.0234940),
-    "USTECm":  dict(obstruction_tolerance_points=2.640964, breach_tolerance_points=4.401606,
-                     touch_tolerance_points=2.640964, stop_buffer_points=4.401606, min_risk_points=13.204819),
+    "USTECm":  dict(obstruction_tolerance_points=7.922892, breach_tolerance_points=4.401606,
+                     touch_tolerance_points=7.922892, stop_buffer_points=4.401606, min_risk_points=13.204819),
 }
 
 # symbol -> MutanabbyConfig field overrides

@@ -226,4 +226,11 @@ if __name__ == "__main__":
     # reload=False deliberately: the reloader restarts the process on any file
     # touch, which would abandon a running bot thread mid-trade and can leave
     # two overlapping MT5 order loops on the same account.
-    uvicorn.run(app, host=config.BIND_HOST, port=config.BIND_PORT, reload=False)
+    uvicorn.run(
+        app,
+        host=config.BIND_HOST,
+        port=config.BIND_PORT,
+        reload=False,
+        ssl_certfile=config.SSL_CERTFILE,
+        ssl_keyfile=config.SSL_KEYFILE,
+    )

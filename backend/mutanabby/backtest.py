@@ -45,7 +45,16 @@ class Trade:
     # --- Exit ---
     exit_time: Optional[pd.Timestamp] = None
     exit_price: Optional[float] = None
-    exit_reason: Optional[str] = None   # "target" | "stop" | "opposite_signal" | "time_exit"
+    exit_reason: Optional[str] = None   # "target" | "target2" | "stop" | "opposite_signal" | "time_exit"
+
+    # --- Split target (TP1/TP2) ---
+    # See trendline/backtest.py's Trade for the shared semantics: one Trade row
+    # per setup, `tp1_fraction` banked at TP1, remainder rides to TP2.
+    target_price_2: Optional[float] = None
+    tp1_fraction: float = 1.0
+    tp1_hit: bool = False
+    tp1_exit_price: Optional[float] = None
+    tp1_exit_time: Optional[pd.Timestamp] = None
 
     # --- Context (for diagnostics) ---
     signal_bar: int = 0
@@ -153,26 +162,49 @@ def run_backtest(df: pd.DataFrame, cfg: MutanabbyConfig,
                     if new_trail_stop < trade.stop_price:
                         trade.stop_price = new_trail_stop
 
+            # TP1 until it fills, TP2 afterwards. Unsplit, this is always TP1
+            # and the branch below closes the whole position as it always did.
+            splitting = trade.target_price_2 is not None
+            active_target = (
+                trade.target_price_2 if (splitting and trade.tp1_hit) else trade.target_price
+            )
+
             if trade.direction == "long":
                 stop_hit = bar_low <= trade.stop_price
-                target_hit = bar_high >= trade.target_price
+                target_hit = bar_high >= active_target
                 if stop_hit and target_hit:
                     trade.exit_price, trade.exit_reason, closed = trade.stop_price, "stop", True
                 elif stop_hit:
                     trade.exit_price, trade.exit_reason, closed = min(trade.stop_price, bar_open), "stop", True
                 elif target_hit:
-                    trade.exit_price = max(trade.target_price, bar_open) if bar_open > trade.target_price else trade.target_price
-                    trade.exit_reason, closed = "target", True
+                    fill = max(active_target, bar_open) if bar_open > active_target else active_target
+                    if splitting and not trade.tp1_hit:
+                        trade.tp1_hit, trade.tp1_exit_price, trade.tp1_exit_time = True, fill, bar_ts
+                        if bar_high >= trade.target_price_2:
+                            tp2 = trade.target_price_2
+                            trade.exit_price = max(tp2, bar_open) if bar_open > tp2 else tp2
+                            trade.exit_reason, closed = "target2", True
+                    else:
+                        trade.exit_price = fill
+                        trade.exit_reason, closed = ("target2" if splitting else "target"), True
             else:
                 stop_hit = bar_high >= trade.stop_price
-                target_hit = bar_low <= trade.target_price
+                target_hit = bar_low <= active_target
                 if stop_hit and target_hit:
                     trade.exit_price, trade.exit_reason, closed = trade.stop_price, "stop", True
                 elif stop_hit:
                     trade.exit_price, trade.exit_reason, closed = max(trade.stop_price, bar_open), "stop", True
                 elif target_hit:
-                    trade.exit_price = min(trade.target_price, bar_open) if bar_open < trade.target_price else trade.target_price
-                    trade.exit_reason, closed = "target", True
+                    fill = min(active_target, bar_open) if bar_open < active_target else active_target
+                    if splitting and not trade.tp1_hit:
+                        trade.tp1_hit, trade.tp1_exit_price, trade.tp1_exit_time = True, fill, bar_ts
+                        if bar_low <= trade.target_price_2:
+                            tp2 = trade.target_price_2
+                            trade.exit_price = min(tp2, bar_open) if bar_open < tp2 else tp2
+                            trade.exit_reason, closed = "target2", True
+                    else:
+                        trade.exit_price = fill
+                        trade.exit_reason, closed = ("target2" if splitting else "target"), True
 
             # Flip exit: only if the bar didn't already stop out or hit target.
             flip_exit = False
@@ -214,6 +246,8 @@ def run_backtest(df: pd.DataFrame, cfg: MutanabbyConfig,
                     entry_price   = fill_price,
                     stop_price    = sig.stop_price,
                     target_price  = sig.target_price,
+                    target_price_2 = sig.target_price_2,
+                    tp1_fraction  = cfg.tp1_fraction if sig.target_price_2 is not None else 1.0,
                     signal_bar    = sig.bar_idx,
                     strength      = sig.strength,
                     rsi_at_signal = sig.rsi,
@@ -241,10 +275,35 @@ def run_backtest(df: pd.DataFrame, cfg: MutanabbyConfig,
 
 
 def _finalise_trade(trade: Trade, costs: BacktestCosts) -> None:
-    ep, xp = trade.entry_price, trade.exit_price
-    raw_points = (xp - ep) if trade.direction == "long" else (ep - xp)
+    """Book P/L, size-weighting the two legs when TP1 filled.
 
-    commission_points = costs.commission_per_trade / (trade.units * costs.point_value) if trade.units > 0 else 0.0
-    trade.pnl_points = raw_points - commission_points
-    trade.pnl_dollars = trade.pnl_points * trade.units * costs.point_value
-    trade.r_multiple = trade.pnl_points / trade.risk_points if trade.risk_points > 0 else 0.0
+    Same convention as trendline/backtest.py: `pnl_points` is the size-weighted
+    per-unit figure (so `r_multiple` stays comparable with unsplit trades) while
+    `pnl_dollars` is the total across the whole original position, and the flat
+    commission is charged once per leg that opened.
+    """
+    ep = trade.entry_price
+    sign = 1.0 if trade.direction == "long" else -1.0
+
+    legs: list[tuple[float, float]] = []   # (fraction, exit_price)
+    if trade.tp1_hit and trade.tp1_exit_price is not None:
+        legs.append((trade.tp1_fraction, trade.tp1_exit_price))
+        legs.append((1.0 - trade.tp1_fraction, trade.exit_price))
+    else:
+        legs.append((1.0, trade.exit_price))
+
+    per_unit_commission = (
+        costs.commission_per_trade / (trade.units * costs.point_value)
+        if trade.units > 0 else 0.0
+    )
+
+    pnl_points = 0.0
+    for fraction, exit_price in legs:
+        if fraction <= 0:
+            continue
+        gross = sign * (exit_price - ep)
+        pnl_points += fraction * (gross - per_unit_commission / fraction)
+
+    trade.pnl_points = pnl_points
+    trade.pnl_dollars = pnl_points * trade.units * costs.point_value
+    trade.r_multiple = pnl_points / trade.risk_points if trade.risk_points > 0 else 0.0

@@ -14,6 +14,7 @@ from typing import Optional
 import numpy as np
 
 from silver_bullet.news_calendar import is_news_day
+from src.split_target import r_target as _r_target, validate_split
 
 from .candlesticks import classify_reversal
 from .config import TrendlineConfig
@@ -35,12 +36,13 @@ class Signal:
     direction: str              # "long" | "short"
     entry_price: float
     stop_price: float
-    target_price: float
+    target_price: float          # TP1 when split_targets is on, else the only target
     line_kind: str               # "support" | "resistance"
     line_anchor1_bar: int
     line_anchor2_bar: int
     touch_bar: int
     pattern: str                 # confirming reversal-candlestick pattern name
+    target_price_2: Optional[float] = None   # TP2; None when not splitting
 
 
 class SignalGenerator:
@@ -57,6 +59,8 @@ class SignalGenerator:
     """
 
     def __init__(self, cfg: TrendlineConfig):
+        if cfg.split_targets:
+            validate_split(cfg.tp1_rr, cfg.tp2_rr, cfg.tp1_fraction)
         self._cfg = cfg
         self._support_line: Optional[TrendLine] = None
         self._resistance_line: Optional[TrendLine] = None
@@ -168,28 +172,38 @@ class SignalGenerator:
             )
             return None
 
-        target: Optional[float] = None
-        if cfg.target_mode == "opposite_swing":
-            if direction == "long":
-                lvl = nearest_buyside_liquidity(highs, bar_idx, cfg.swing_lookback, entry)
-            else:
-                lvl = nearest_sellside_liquidity(lows, bar_idx, cfg.swing_lookback, entry)
-            if lvl is not None:
-                swing_r = abs(lvl - entry) / risk
-                if swing_r >= cfg.min_rr_for_swing_target:
-                    target = lvl
-        if target is None:
-            target = entry + cfg.rr * risk if direction == "long" else entry - cfg.rr * risk
+        target_2: Optional[float] = None
+        if cfg.split_targets:
+            # Pure R multiples — the opposite-swing lookup is skipped entirely,
+            # since a split needs two ordered targets and a single swing level
+            # gives only one.
+            target = _r_target(direction, entry, risk, cfg.tp1_rr)
+            target_2 = _r_target(direction, entry, risk, cfg.tp2_rr)
+        else:
+            target = None
+            if cfg.target_mode == "opposite_swing":
+                if direction == "long":
+                    lvl = nearest_buyside_liquidity(highs, bar_idx, cfg.swing_lookback, entry)
+                else:
+                    lvl = nearest_sellside_liquidity(lows, bar_idx, cfg.swing_lookback, entry)
+                if lvl is not None:
+                    swing_r = abs(lvl - entry) / risk
+                    if swing_r >= cfg.min_rr_for_swing_target:
+                        target = lvl
+            if target is None:
+                target = _r_target(direction, entry, risk, cfg.rr)
 
+        tp2_txt = f" target2={target_2:.5f}" if target_2 is not None else ""
         self._log(
             f"[TL] Signal {direction.upper()} | pattern={pattern} | entry={entry:.5f} "
-            f"stop={stop:.5f} target={target:.5f} | bar={bar_idx} | {date_str}"
+            f"stop={stop:.5f} target={target:.5f}{tp2_txt} | bar={bar_idx} | {date_str}"
         )
         return Signal(
             direction=direction,
             entry_price=entry,
             stop_price=stop,
             target_price=target,
+            target_price_2=target_2,
             line_kind=line.kind,
             line_anchor1_bar=line.anchor1_bar,
             line_anchor2_bar=line.anchor2_bar,

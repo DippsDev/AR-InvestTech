@@ -43,6 +43,13 @@ def _parse_args(argv=None):
     p.add_argument("--atr-multiplier",  type=float, default=MutanabbyConfig.atr_risk_multiplier)
     p.add_argument("--rr",              type=float, default=MutanabbyConfig.rr,
                    help="Which R rung to target (indicator draws 1, 2 and 3)")
+    p.add_argument("--no-split-targets", dest="split_targets", action="store_false",
+                   help="Disable the TP1/TP2 split and use the single --target-mode/--rr target")
+    p.set_defaults(split_targets=MutanabbyConfig.split_targets)
+    p.add_argument("--tp1-rr",       type=float, default=MutanabbyConfig.tp1_rr)
+    p.add_argument("--tp2-rr",       type=float, default=MutanabbyConfig.tp2_rr)
+    p.add_argument("--tp1-fraction", type=float, default=MutanabbyConfig.tp1_fraction,
+                   help="Portion of the position closed at TP1 (rest rides to TP2)")
     p.add_argument("--min-risk",        type=float, default=MutanabbyConfig.min_risk_points)
     p.add_argument("--breakeven-r",     type=float, default=MutanabbyConfig.breakeven_r)
     p.add_argument("--trail-r",         type=float, default=MutanabbyConfig.trail_r)
@@ -75,6 +82,10 @@ def main(argv=None):
         risk_atr_length         = args.risk_atr_length,
         atr_risk_multiplier     = args.atr_multiplier,
         rr                      = args.rr,
+        split_targets           = args.split_targets,
+        tp1_rr                  = args.tp1_rr,
+        tp2_rr                  = args.tp2_rr,
+        tp1_fraction            = args.tp1_fraction,
         min_risk_points         = args.min_risk,
         breakeven_r             = args.breakeven_r,
         trail_r                 = args.trail_r,
@@ -117,7 +128,11 @@ def main(argv=None):
     print(f"  Profit factor   : {metrics['profit_factor']}")
     print(f"  Max drawdown    : ${metrics['max_drawdown_usd']}")
     exits = metrics["exit_breakdown"]
-    print(f"  Exit breakdown  : target={exits.get('target',0)}  stop={exits.get('stop',0)}  "
+    tp1_filled = sum(1 for t in trades if t.tp1_hit)
+    if tp1_filled:
+        print(f"  TP1 partials    : {tp1_filled} of {len(trades)} trades banked their first leg")
+    print(f"  Exit breakdown  : target={exits.get('target',0)}  target2={exits.get('target2',0)}  "
+          f"stop={exits.get('stop',0)}  "
           f"flip={exits.get('opposite_signal',0)}  time={exits.get('time_exit',0)}")
     print("=" * 50 + "\n")
 

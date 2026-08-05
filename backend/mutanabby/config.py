@@ -60,7 +60,22 @@ class MutanabbyConfig:
     risk_atr_length: int = 14
     atr_risk_multiplier: float = 1.0
     # Which of the indicator's 1:1 / 2:1 / 3:1 rungs to actually trade.
+    # Ignored when `split_targets` is True.
     rr: float = 2.0
+
+    # ── Split profit targets ──────────────────────────────────────────────────
+    # When True the position is split in two: `tp1_fraction` of it closes at
+    # `tp1_rr`, the remainder runs to `tp2_rr`. Overrides `rr`.
+    #
+    # Note this moves MB off the configuration its evidence was measured at
+    # (rr 2.0, PF 1.215 median across 12 instruments — see README.md). 3R/4R
+    # is past the furthest rung the source indicator even draws, so the
+    # indicator's own chart offers no support for it either. Set False to
+    # return to the measured baseline.
+    split_targets: bool = True
+    tp1_rr: float = 3.0
+    tp2_rr: float = 4.0
+    tp1_fraction: float = 0.5
     # Skip signals whose ATR-derived stop is implausibly tight. 0 disables.
     # Left at 0 by default: the stop is already volatility-scaled, so unlike
     # Silver Bullet / Trendline this strategy needs no per-symbol point floor.

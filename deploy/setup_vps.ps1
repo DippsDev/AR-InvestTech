@@ -58,10 +58,35 @@ Step "Installing dependencies"
 Ok "Installed backend/requirements.txt"
 
 Step "Verifying the MetaTrader5 package"
-# This wheel is Windows-only; a silent failure here is the single most
-# confusing way for the whole deployment to not work.
-& $Python -c "import MetaTrader5; print('  MetaTrader5', MetaTrader5.__version__)"
-Ok "MetaTrader5 package imports"
+# Windows-only wheel, and a numpy/MT5 ABI mismatch is a confusing way for
+# everything downstream to fail — so it is worth checking here. But it must
+# NOT abort the run: the .env written below is what the rest of the runbook
+# depends on, and deploy/verify_vps.py re-checks MT5 properly later anyway.
+#
+# ErrorActionPreference is relaxed around the native call because in
+# PowerShell 5.1 a native exe writing to stderr under -EA Stop raises
+# NativeCommandError, which would terminate the script on a mere traceback.
+$prevEAP = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$mt5Out = & $Python -c "import MetaTrader5; print(MetaTrader5.__version__)" 2>&1
+$mt5Ok  = ($LASTEXITCODE -eq 0)
+$npOut  = & $Python -c "import numpy; print(numpy.__version__)" 2>&1
+$npOk   = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = $prevEAP
+
+if ($npOk) {
+    Ok "numpy $($npOut | Select-Object -Last 1)"
+} else {
+    Warn "numpy failed to import — see $npOut"
+}
+
+if ($mt5Ok) {
+    Ok "MetaTrader5 $($mt5Out | Select-Object -Last 1) imports"
+} else {
+    Warn "MetaTrader5 failed to import. Continuing so .env is still written."
+    Warn "Re-test it on its own after setup finishes:"
+    Write-Host '        .\.venv\Scripts\python.exe -c "import MetaTrader5 as m; print(m.__version__)"' -ForegroundColor Gray
+}
 
 Step "Installing cloudflared"
 $cf = (Get-Command cloudflared -ErrorAction SilentlyContinue).Source
@@ -73,10 +98,18 @@ if (-not $cf) {
 }
 if ($cf) {
     Ok "cloudflared already present at $cf"
-} else {
+} elseif (Get-Command winget -ErrorAction SilentlyContinue) {
     Write-Host "  Installing via winget..."
     winget install --id Cloudflare.cloudflared -e --accept-source-agreements --accept-package-agreements
     Ok "cloudflared installed (open a new shell for it to appear on PATH)"
+} else {
+    # Windows Server SKUs ship without App Installer, so winget is absent.
+    # This must not abort the run: cloudflared is frequently already installed
+    # (or managed from the Zero Trust dashboard), and the steps after this one
+    # — writing .env with a generated API_TOKEN — are the ones that matter.
+    Warn "winget not available and cloudflared not found on PATH."
+    Warn "If the tunnel is not already running, install it manually from:"
+    Write-Host "        https://github.com/cloudflare/cloudflared/releases/latest (cloudflared-windows-amd64.msi)" -ForegroundColor Gray
 }
 
 Step "Configuring .env"

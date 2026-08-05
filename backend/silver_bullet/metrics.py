@@ -106,6 +106,7 @@ def print_metrics(metrics: dict) -> None:
     print(f"  Max drawdown    : ${metrics['max_drawdown_usd']}")
     exits = metrics['exit_breakdown']
     print(f"  Exit breakdown  : target={exits.get('target',0)}  "
+          f"target2={exits.get('target2',0)}  "
           f"stop={exits.get('stop',0)}  "
           f"time={exits.get('time_exit',0)}")
     print("=" * 50 + "\n")

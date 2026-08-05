@@ -37,6 +37,7 @@ from typing import Optional
 import numpy as np
 
 from silver_bullet.news_calendar import is_news_day
+from src.split_target import validate_split
 
 from .config import MutanabbyConfig
 from .indicators import atr, crossover, crossunder, rsi, sma, supertrend
@@ -48,13 +49,14 @@ class Signal:
     direction: str              # "long" | "short"
     entry_price: float
     stop_price: float
-    target_price: float
+    target_price: float         # TP1 when split_targets is on, else the only target
     bar_idx: int
     # --- Diagnostics (label text on the chart; gate nothing) ---
     strength: str               # "normal" | "strong"
     supertrend: float
     trend_sma: float
     rsi: float
+    target_price_2: Optional[float] = None   # TP2; None when not splitting
 
 
 class SignalGenerator:
@@ -77,6 +79,8 @@ class SignalGenerator:
 
     def __init__(self, cfg: MutanabbyConfig, highs: np.ndarray, lows: np.ndarray,
                  closes: np.ndarray):
+        if cfg.split_targets:
+            validate_split(cfg.tp1_rr, cfg.tp2_rr, cfg.tp1_fraction)
         self._cfg = cfg
         self._highs = np.asarray(highs, dtype=float)
         self._lows = np.asarray(lows, dtype=float)
@@ -178,19 +182,29 @@ class SignalGenerator:
             )
             return None
 
-        # Source formula, sign-correct for both directions without branching.
-        target = (entry - stop) * cfg.rr + entry
+        # Source formula, sign-correct for both directions without branching:
+        # on a short (entry - stop) is negative, so the projection runs downward.
+        # The split reuses it for both rungs rather than switching to a helper,
+        # keeping the TP maths identical to the Pine original.
+        target_2: Optional[float] = None
+        if cfg.split_targets:
+            target = (entry - stop) * cfg.tp1_rr + entry
+            target_2 = (entry - stop) * cfg.tp2_rr + entry
+        else:
+            target = (entry - stop) * cfg.rr + entry
 
         strength = self._strength(direction, bar_idx)
+        tp2_txt = f" target2={target_2:.5f}" if target_2 is not None else ""
         self._log(
             f"[MB] Signal {direction.upper()} ({strength}) | entry={entry:.5f} "
-            f"stop={stop:.5f} target={target:.5f} | bar={bar_idx} | {date_str}"
+            f"stop={stop:.5f} target={target:.5f}{tp2_txt} | bar={bar_idx} | {date_str}"
         )
         return Signal(
             direction=direction,
             entry_price=entry,
             stop_price=stop,
             target_price=target,
+            target_price_2=target_2,
             bar_idx=bar_idx,
             strength=strength,
             supertrend=float(self._st[bar_idx]),

@@ -51,7 +51,8 @@ import pandas as pd
 
 import config as root_config
 
-from src.broker_time import get_broker_utc_offset
+from src import mt5_cache
+from src.split_target import split_lots
 from src.ticket_store import load_tickets, record_ticket
 
 from .config import MutanabbyConfig
@@ -77,6 +78,10 @@ class _OpenPosition:
 class MutanabbyLiveAdapter:
     """Stateful, bar-by-bar adapter. Instantiate once; call .cycle() every 5s."""
 
+    # Mutanabby reads H1 bars — used by _idle_between_bars to tell whether a
+    # new bar has closed without paying for a fetch to find out.
+    _BAR_PERIOD_SEC = 3600
+
     def __init__(self, cfg: MutanabbyConfig, symbol: Optional[str] = None,
                  risk_pct_override: Optional[float] = None):
         self._cfg = cfg
@@ -86,6 +91,9 @@ class MutanabbyLiveAdapter:
         # bot.py). None means "use MB_RISK_PCT directly".
         self._risk_pct_override: Optional[float] = risk_pct_override
         self._last_bar_time: Optional[pd.Timestamp] = None
+        # Bar-period boundary this adapter last ran a full scan at, so an
+        # idle adapter fetches bars once per H1 bar, not once per loop tick.
+        self._last_bar_slot: Optional[int] = None
         # Open positions this adapter placed, keyed by MT5 ticket.
         self._open: dict[int, _OpenPosition] = {}
         self._initialized: bool = False
@@ -126,7 +134,7 @@ class MutanabbyLiveAdapter:
         # MT5 timestamps (bars, ticks, deals) are stamped in the broker's own
         # server clock, not true UTC — measure the current offset once per
         # cycle so every date/daily-count calc below can correct for it.
-        self._broker_utc_offset = get_broker_utc_offset(symbol)
+        self._broker_utc_offset = mt5_cache.broker_utc_offset(symbol)
 
         if self._drawdown_halted:
             logger.debug("[MB] Cycle skipped | drawdown circuit breaker active")
@@ -138,6 +146,13 @@ class MutanabbyLiveAdapter:
         # Daily entry cap gates NEW entries only; open positions are still
         # synced and managed below so hitting the cap never strands a trade.
         can_enter_new = self._check_daily_limits(symbol)
+
+        # With nothing on the books and no newly-closed bar, everything
+        # below can only re-derive facts this adapter already holds — see
+        # _idle_between_bars.
+        if self._idle_between_bars():
+            logger.debug("[MB] Cycle skipped | idle, no new H1 bar since last scan")
+            return
 
         bars = self._fetch_bars(symbol, n=self._cfg.bars_lookback)
         if bars is None or len(bars) < MIN_CONVERGENCE_BARS:
@@ -169,6 +184,12 @@ class MutanabbyLiveAdapter:
             logger.debug("[MB] Cycle skipped | too few completed bars")
             return
 
+        # Bars are in hand, so this bar period counts as scanned regardless of
+        # what the rest of the cycle decides. Marking it here rather than in
+        # the gate means a failed or empty fetch above retries on the next
+        # tick instead of waiting out a whole bar.
+        self._mark_bar_scanned()
+
         times = completed.index.tolist()
         highs = completed["high"].to_numpy(dtype=float)
         lows = completed["low"].to_numpy(dtype=float)
@@ -199,7 +220,7 @@ class MutanabbyLiveAdapter:
         for ticket in list(self._open):
             if self._open.get(ticket) is None:
                 continue
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if positions:
                 live = positions[0]
                 side = "LONG" if live.type == mt5.ORDER_TYPE_BUY else "SHORT"
@@ -274,7 +295,7 @@ class MutanabbyLiveAdapter:
     # ------------------------------------------------------------------
 
     def _fetch_bars(self, symbol: str, n: int) -> Optional[pd.DataFrame]:
-        if not mt5.symbol_info(symbol):
+        if not mt5_cache.symbol_info(symbol):
             mt5.symbol_select(symbol, True)
         rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_H1, 0, n)
         if rates is None or len(rates) == 0:
@@ -284,12 +305,51 @@ class MutanabbyLiveAdapter:
         df = df.set_index("time")
         return df[["open", "high", "low", "close"]]
 
+    def _idle_between_bars(self) -> bool:
+        """True when this cycle provably has nothing to do and can be skipped.
+
+        The bot loop ticks every 5 seconds but Mutanabby reads H1 bars, so 719 of
+        every 720 cycles re-fetch 300 bars that cannot contain anything new.
+
+        Skipping is only safe when nothing else in the cycle can act: with no
+        open position there is no breakeven, trailing stop or exit to manage,
+        and with no newly-closed bar there is no new price action to feed the
+        generator. Under those conditions the rest of the cycle reads bars,
+        iterates an empty dict and re-derives what it already holds, so
+        skipping changes no decision this adapter would make.
+
+        Bar arrival is derived from the clock rather than from a fetch (which
+        is the cost being avoided): the in-progress bar opens at the current
+        hour boundary, so a new bar has closed exactly when that boundary
+        moves. Tracking the boundary last scanned at — rather than comparing
+        against `_last_bar_time` — also keeps this correct when the market is
+        closed and no new bars arrive, which would otherwise leave the
+        watermark stuck and refetch on every tick.
+
+        This is a pure predicate: the boundary is only marked scanned once a
+        fetch has actually succeeded (see `_mark_bar_scanned`), so a failed or
+        empty fetch retries on the next tick rather than waiting out a bar.
+        """
+        if self._open:
+            return False
+        return self._current_bar_slot() == self._last_bar_slot
+
+    def _current_bar_slot(self) -> int:
+        """Index of the bar period in progress."""
+        from datetime import datetime, timezone
+
+        return int(datetime.now(timezone.utc).timestamp()) // self._BAR_PERIOD_SEC
+
+    def _mark_bar_scanned(self) -> None:
+        """Record that this bar period's data has been fetched and scanned."""
+        self._last_bar_slot = self._current_bar_slot()
+
     def _market_is_open(self, symbol: str) -> bool:
         """Best-effort check whether the symbol is currently tradeable."""
         from datetime import timezone
 
-        tick = mt5.symbol_info_tick(symbol)
-        sym = mt5.symbol_info(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
+        sym = mt5_cache.symbol_info(symbol)
         if tick is None or sym is None:
             return False
         if sym.trade_mode != mt5.SYMBOL_TRADE_MODE_FULL:
@@ -306,7 +366,7 @@ class MutanabbyLiveAdapter:
             return
         from src.logger import logger
         for ticket in list(self._open):
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if not positions:
                 logger.info(f"[MB] Position #{ticket} closed by MT5 (SL/TP)")
                 del self._open[ticket]
@@ -326,7 +386,7 @@ class MutanabbyLiveAdapter:
         if cfg.breakeven_r <= 0 and cfg.trail_r <= 0:
             return
 
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
         if tick is None:
             return
 
@@ -346,11 +406,11 @@ class MutanabbyLiveAdapter:
                 else current_px <= fill - trigger_dist
             )
             if triggered:
-                positions = mt5.positions_get(ticket=ticket) or []
+                positions = mt5_cache.positions_get(ticket=ticket)
                 if not positions:
                     return
                 live = positions[0]
-                sym_info = mt5.symbol_info(symbol)
+                sym_info = mt5_cache.symbol_info(symbol)
                 d = sym_info.digits if sym_info else 5
                 result = mt5.order_send({
                     "action":   mt5.TRADE_ACTION_SLTP,
@@ -360,6 +420,10 @@ class MutanabbyLiveAdapter:
                     "tp":       round(live.tp, d),
                 })
                 if result.retcode == mt5.TRADE_RETCODE_DONE:
+                    # The trailing phase below re-reads this position to
+                    # compare against its current SL — drop the snapshot so
+                    # it sees the stop we just moved, not the older one.
+                    mt5_cache.invalidate_positions()
                     pos.breakeven_triggered = True
                     logger.debug(
                         f"[MB] Breakeven triggered | #{live.ticket} | SL moved to {fill:.5f}"
@@ -376,11 +440,11 @@ class MutanabbyLiveAdapter:
                     pos.trail_best_price = current_px
                 new_sl = pos.trail_best_price + risk_pts * cfg.trail_r
 
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if not positions:
                 return
             live = positions[0]
-            sym_info = mt5.symbol_info(symbol)
+            sym_info = mt5_cache.symbol_info(symbol)
             d = sym_info.digits if sym_info else 5
 
             sl_improves = (new_sl > live.sl) if is_long else (new_sl < live.sl)
@@ -393,6 +457,7 @@ class MutanabbyLiveAdapter:
                     "tp":       round(live.tp, d),
                 })
                 if result.retcode == mt5.TRADE_RETCODE_DONE:
+                    mt5_cache.invalidate_positions()
                     logger.debug(
                         f"[MB] Trail stop updated | #{live.ticket} | SL moved to {new_sl:.5f}"
                     )
@@ -403,14 +468,14 @@ class MutanabbyLiveAdapter:
         if not self._validate_symbol(symbol):
             return
 
-        sym_info = mt5.symbol_info(symbol)
+        sym_info = mt5_cache.symbol_info(symbol)
         if sym_info is None:
             logger.error(f"[MB] Symbol {symbol} not found")
             return
         if not sym_info.visible:
             mt5.symbol_select(symbol, True)
 
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
         if tick is None:
             logger.error(f"[MB] No tick data for {symbol}")
             return
@@ -437,63 +502,88 @@ class MutanabbyLiveAdapter:
         # Enforce broker minimum stop distance from the relevant market price.
         min_dist = sym_info.trade_stops_level * sym_info.point
         sl = signal.stop_price
-        tp = signal.target_price
         if is_long:
             if stop_price - sl < min_dist:
                 sl = round(stop_price - min_dist * 1.1, d)
-            if tp - stop_price < min_dist:
-                tp = round(stop_price + min_dist * 1.1, d)
         else:
             if sl - stop_price < min_dist:
                 sl = round(stop_price + min_dist * 1.1, d)
-            if stop_price - tp < min_dist:
-                tp = round(stop_price - min_dist * 1.1, d)
 
-        result = mt5.order_send({
-            "action":       mt5.TRADE_ACTION_DEAL,
-            "symbol":       symbol,
-            "volume":       lots,
-            "type":         order_type,
-            "price":        round(price, d),
-            "sl":           round(sl, d),
-            "tp":           round(tp, d),
-            "deviation":    20,
-            "magic":        MB_MAGIC,
-            "comment":      "Mutanabby_MKT",
-            "type_time":    mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        })
+        def clamp_tp(tp: float) -> float:
+            if is_long:
+                return round(stop_price + min_dist * 1.1, d) if tp - stop_price < min_dist else tp
+            return round(stop_price - min_dist * 1.1, d) if stop_price - tp < min_dist else tp
 
-        if result.retcode == mt5.TRADE_RETCODE_DONE:
-            positions = mt5.positions_get(ticket=result.order) or []
-            fill_price = positions[0].price_open if positions else price
-            self._open[result.order] = _OpenPosition(
-                signal=signal,
-                fill_price=fill_price,
-            )
-            record_ticket(result.order, strategy="MB")
-            logger.info(
-                f"[MB] MARKET {signal.direction.upper()} | {symbol} | "
-                f"Lots={lots:.2f} | Fill={fill_price:.5f} SL={sl:.5f} TP={tp:.5f} | "
-                f"strength={signal.strength} | #{result.order}"
-            )
+        # Two independent positions sharing one SL — see trendline's
+        # _place_market for why this is two orders rather than a partial close.
+        legs: list[tuple[float, float]]      # (lots, tp)
+        split = None
+        if signal.target_price_2 is not None:
+            split = split_lots(lots, self._cfg.tp1_fraction,
+                               sym_info.volume_min, sym_info.volume_step)
+            if split is None:
+                logger.info(
+                    f"[MB] Split skipped | {lots:.2f} lots cannot divide into two legs at or "
+                    f"above volume_min={sym_info.volume_min} (step={sym_info.volume_step}) — "
+                    f"placing one undivided order at TP1"
+                )
+        if split is not None:
+            legs = [(split[0], clamp_tp(signal.target_price)),
+                    (split[1], clamp_tp(signal.target_price_2))]
         else:
-            logger.error(
-                f"[MB] Market order failed | code={result.retcode} | {result.comment}"
-            )
+            legs = [(lots, clamp_tp(signal.target_price))]
+
+        for leg_no, (leg_lots, tp) in enumerate(legs, start=1):
+            result = mt5.order_send({
+                "action":       mt5.TRADE_ACTION_DEAL,
+                "symbol":       symbol,
+                "volume":       leg_lots,
+                "type":         order_type,
+                "price":        round(price, d),
+                "sl":           round(sl, d),
+                "tp":           round(tp, d),
+                "deviation":    20,
+                "magic":        MB_MAGIC,
+                "comment":      f"Mutanabby_MKT_TP{leg_no}" if len(legs) > 1 else "Mutanabby_MKT",
+                "type_time":    mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            })
+
+            if result.retcode == mt5.TRADE_RETCODE_DONE:
+                # Read straight from MT5, not the snapshot: this position did
+                # not exist when the tick's snapshot was taken.
+                mt5_cache.invalidate_positions()
+                positions = mt5.positions_get(ticket=result.order) or []
+                fill_price = positions[0].price_open if positions else price
+                self._open[result.order] = _OpenPosition(
+                    signal=signal,
+                    fill_price=fill_price,
+                )
+                record_ticket(result.order, strategy="MB")
+                leg_txt = f" leg{leg_no}/{len(legs)}" if len(legs) > 1 else ""
+                logger.info(
+                    f"[MB] MARKET {signal.direction.upper()}{leg_txt} | {symbol} | "
+                    f"Lots={leg_lots:.2f} | Fill={fill_price:.5f} SL={sl:.5f} TP={tp:.5f} | "
+                    f"strength={signal.strength} | #{result.order}"
+                )
+            else:
+                logger.error(
+                    f"[MB] Market order failed (leg {leg_no}/{len(legs)}) | "
+                    f"code={result.retcode} | {result.comment}"
+                )
 
     def _time_exit(self, symbol: str, ticket: int) -> None:
         if ticket not in self._open:
             return
         from src.logger import logger
 
-        positions = mt5.positions_get(ticket=ticket) or []
+        positions = mt5_cache.positions_get(ticket=ticket)
         if not positions:
             del self._open[ticket]
             return
 
         pos = positions[0]
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
         if tick is None:
             return
 
@@ -516,6 +606,7 @@ class MutanabbyLiveAdapter:
         })
 
         if result.retcode == mt5.TRADE_RETCODE_DONE:
+            mt5_cache.invalidate_positions()
             logger.info(f"[MB] Shutdown exit | #{pos.ticket} | PnL ${pos.profit:.2f}")
             del self._open[ticket]
         else:
@@ -547,12 +638,12 @@ class MutanabbyLiveAdapter:
     def _compute_lots(self, symbol: str, signal: Signal) -> Optional[float]:
         from src.logger import logger
 
-        sym_info = mt5.symbol_info(symbol)
+        sym_info = mt5_cache.symbol_info(symbol)
         if sym_info is None:
             logger.error(f"[MB] No symbol info for {symbol}")
             return None
 
-        account = mt5.account_info()
+        account = mt5_cache.account_info()
         if account is None:
             return None
 
@@ -647,13 +738,11 @@ class MutanabbyLiveAdapter:
             return False
 
         # deal.time is stamped in the broker's server clock, so the from/to
-        # boundaries must be expressed in that same clock.
-        ny_midnight = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
-        from_date = ny_midnight.astimezone(timezone.utc) + self._broker_utc_offset
-        to_date = datetime.now(timezone.utc) + self._broker_utc_offset
-
+        # boundaries must be expressed in that same clock — mt5_cache applies
+        # the measured offset and fetches the window once per loop tick for all
+        # three strategies instead of once per adapter.
         try:
-            deals = mt5.history_deals_get(from_date, to_date) or []
+            deals = mt5_cache.history_deals_today(self._broker_utc_offset, NY_TZ)
         except Exception as exc:
             logger.warning(f"[MB] Failed to fetch history deals: {exc}")
             deals = []
@@ -708,7 +797,7 @@ class MutanabbyLiveAdapter:
         if self._drawdown_halted:
             return False
 
-        account = mt5.account_info()
+        account = mt5_cache.account_info()
         if account is None:
             return False
 

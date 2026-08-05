@@ -87,7 +87,10 @@ class TestSignalConstruction:
     def test_target_projects_the_right_way_on_both_directions(self):
         # (entry - stop) * rr + entry is sign-correct without branching: the
         # exact property that makes the Pine one-liner work on shorts.
-        cfg = MutanabbyConfig(rr=2.0)
+        # split_targets=False on purpose: this pins the Pine TP formula, which
+        # is driven by `rr`. The shipped default splits into tp1_rr/tp2_rr and
+        # ignores `rr` entirely.
+        cfg = MutanabbyConfig(rr=2.0, split_targets=False)
         high, low, close = _trending_series(seed=4)
         gen = SignalGenerator(cfg, high, low, close)
         seen = set()
@@ -189,7 +192,9 @@ class TestBacktestLoop:
         df = _frame(high, low, close)
         # A huge target is unreachable, so anything that closes must be a stop
         # or the end-of-data time exit — never a target.
-        trades = run_backtest(df, MutanabbyConfig(rr=500.0), BacktestCosts())
+        # rr=500 pushes the single target unreachably far so every exit must be
+        # a stop; split_targets=False keeps `rr` in control of that distance.
+        trades = run_backtest(df, MutanabbyConfig(rr=500.0, split_targets=False), BacktestCosts())
         assert trades
         assert all(t.exit_reason in ("stop", "time_exit") for t in trades)
 

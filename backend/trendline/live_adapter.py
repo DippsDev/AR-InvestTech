@@ -36,7 +36,8 @@ import pandas as pd
 
 import config as root_config
 
-from src.broker_time import get_broker_utc_offset
+from src import mt5_cache
+from src.split_target import split_lots
 from src.ticket_store import load_tickets, record_ticket
 
 from .config import TrendlineConfig
@@ -58,6 +59,10 @@ class _OpenPosition:
 class TrendlineLiveAdapter:
     """Stateful, bar-by-bar adapter. Instantiate once; call .cycle() every 5s."""
 
+    # Trendline reads H1 bars — used by _idle_between_bars to tell whether a
+    # new bar has closed without paying for a fetch to find out.
+    _BAR_PERIOD_SEC = 3600
+
     def __init__(self, cfg: TrendlineConfig, symbol: Optional[str] = None,
                  risk_pct_override: Optional[float] = None):
         self._cfg = cfg
@@ -69,6 +74,9 @@ class TrendlineLiveAdapter:
         # instance. None means "use TL_RISK_PCT directly".
         self._risk_pct_override: Optional[float] = risk_pct_override
         self._last_bar_time: Optional[pd.Timestamp] = None
+        # Bar-period boundary this adapter last ran a full scan at, so an
+        # idle adapter fetches bars once per H1 bar, not once per loop tick.
+        self._last_bar_slot: Optional[int] = None
         # Open positions this adapter placed, keyed by MT5 ticket — a dict
         # rather than a single slot so several can be live at once when
         # cfg.one_trade_at_a_time is False (see module docstring).
@@ -114,7 +122,7 @@ class TrendlineLiveAdapter:
         # server clock, not true UTC — measure the current offset once per
         # cycle so every date/daily-count calc below can correct for it.
         # See src/broker_time.py.
-        self._broker_utc_offset = get_broker_utc_offset(symbol)
+        self._broker_utc_offset = mt5_cache.broker_utc_offset(symbol)
 
         if self._drawdown_halted:
             logger.debug("[TL] Cycle skipped | drawdown circuit breaker active")
@@ -128,6 +136,13 @@ class TrendlineLiveAdapter:
         # regardless, so reaching the cap never leaves an open trade without
         # breakeven/trailing for the rest of the day.
         can_enter_new = self._check_daily_limits(symbol)
+
+        # With nothing on the books and no newly-closed bar, everything
+        # below can only re-derive facts this adapter already holds — see
+        # _idle_between_bars.
+        if self._idle_between_bars():
+            logger.debug("[TL] Cycle skipped | idle, no new H1 bar since last scan")
+            return
 
         bars = self._fetch_bars(symbol, n=self._cfg.bars_lookback)
         if bars is None or len(bars) < 10:
@@ -147,6 +162,12 @@ class TrendlineLiveAdapter:
         if completed.empty:
             logger.debug("[TL] Cycle skipped | no completed bars available")
             return
+
+        # Bars are in hand, so this bar period counts as scanned regardless of
+        # what the rest of the cycle decides. Marking it here rather than in
+        # the gate means a failed or empty fetch above retries on the next
+        # tick instead of waiting out a whole bar.
+        self._mark_bar_scanned()
 
         logger.debug(
             f"[TL] Bars fetched | total={len(bars)} completed={len(completed)} | "
@@ -179,7 +200,7 @@ class TrendlineLiveAdapter:
             pos = self._open.get(ticket)
             if pos is None:
                 continue
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if positions:
                 live = positions[0]
                 side = "LONG" if live.type == mt5.ORDER_TYPE_BUY else "SHORT"
@@ -271,7 +292,7 @@ class TrendlineLiveAdapter:
     # ------------------------------------------------------------------
 
     def _fetch_bars(self, symbol: str, n: int) -> Optional[pd.DataFrame]:
-        if not mt5.symbol_info(symbol):
+        if not mt5_cache.symbol_info(symbol):
             mt5.symbol_select(symbol, True)
         rates = mt5.copy_rates_from_pos(symbol, mt5.TIMEFRAME_H1, 0, n)
         if rates is None or len(rates) == 0:
@@ -281,12 +302,51 @@ class TrendlineLiveAdapter:
         df = df.set_index("time")
         return df[["open", "high", "low", "close"]]
 
+    def _idle_between_bars(self) -> bool:
+        """True when this cycle provably has nothing to do and can be skipped.
+
+        The bot loop ticks every 5 seconds but Trendline reads H1 bars, so 719 of
+        every 720 cycles re-fetch cfg.bars_lookback bars that cannot contain anything new.
+
+        Skipping is only safe when nothing else in the cycle can act: with no
+        open position there is no breakeven, trailing stop or exit to manage,
+        and with no newly-closed bar there is no new price action to feed the
+        generator. Under those conditions the rest of the cycle reads bars,
+        iterates an empty dict and re-derives what it already holds, so
+        skipping changes no decision this adapter would make.
+
+        Bar arrival is derived from the clock rather than from a fetch (which
+        is the cost being avoided): the in-progress bar opens at the current
+        hour boundary, so a new bar has closed exactly when that boundary
+        moves. Tracking the boundary last scanned at — rather than comparing
+        against `_last_bar_time` — also keeps this correct when the market is
+        closed and no new bars arrive, which would otherwise leave the
+        watermark stuck and refetch on every tick.
+
+        This is a pure predicate: the boundary is only marked scanned once a
+        fetch has actually succeeded (see `_mark_bar_scanned`), so a failed or
+        empty fetch retries on the next tick rather than waiting out a bar.
+        """
+        if self._open:
+            return False
+        return self._current_bar_slot() == self._last_bar_slot
+
+    def _current_bar_slot(self) -> int:
+        """Index of the bar period in progress."""
+        from datetime import datetime, timezone
+
+        return int(datetime.now(timezone.utc).timestamp()) // self._BAR_PERIOD_SEC
+
+    def _mark_bar_scanned(self) -> None:
+        """Record that this bar period's data has been fetched and scanned."""
+        self._last_bar_slot = self._current_bar_slot()
+
     def _market_is_open(self, symbol: str) -> bool:
         """Best-effort check whether the symbol is currently tradeable."""
         from datetime import timezone
 
-        tick = mt5.symbol_info_tick(symbol)
-        sym = mt5.symbol_info(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
+        sym = mt5_cache.symbol_info(symbol)
         if tick is None or sym is None:
             return False
         if sym.trade_mode != mt5.SYMBOL_TRADE_MODE_FULL:
@@ -306,7 +366,7 @@ class TrendlineLiveAdapter:
             return
         from src.logger import logger
         for ticket in list(self._open):
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if not positions:
                 logger.info(f"[TL] Position #{ticket} closed by MT5 (SL/TP)")
                 del self._open[ticket]
@@ -319,7 +379,7 @@ class TrendlineLiveAdapter:
         if pos is None:
             return
 
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
         if tick is None:
             return
 
@@ -340,11 +400,11 @@ class TrendlineLiveAdapter:
                 else current_px <= fill - trigger_dist
             )
             if triggered:
-                positions = mt5.positions_get(ticket=ticket) or []
+                positions = mt5_cache.positions_get(ticket=ticket)
                 if not positions:
                     return
                 live     = positions[0]
-                sym_info = mt5.symbol_info(symbol)
+                sym_info = mt5_cache.symbol_info(symbol)
                 d        = sym_info.digits if sym_info else 5
                 result   = mt5.order_send({
                     "action":   mt5.TRADE_ACTION_SLTP,
@@ -354,6 +414,10 @@ class TrendlineLiveAdapter:
                     "tp":       round(live.tp, d),
                 })
                 if result.retcode == mt5.TRADE_RETCODE_DONE:
+                    # The trailing phase below re-reads this position to
+                    # compare against its current SL — drop the snapshot so
+                    # it sees the stop we just moved, not the older one.
+                    mt5_cache.invalidate_positions()
                     pos.breakeven_triggered = True
                     logger.debug(
                         f"[TL] Breakeven triggered | #{live.ticket} | SL moved to {fill:.5f}"
@@ -370,11 +434,11 @@ class TrendlineLiveAdapter:
                     pos.trail_best_price = current_px
                 new_sl = pos.trail_best_price + risk_pts * cfg.trail_r
 
-            positions = mt5.positions_get(ticket=ticket) or []
+            positions = mt5_cache.positions_get(ticket=ticket)
             if not positions:
                 return
             live     = positions[0]
-            sym_info = mt5.symbol_info(symbol)
+            sym_info = mt5_cache.symbol_info(symbol)
             d        = sym_info.digits if sym_info else 5
             current_sl = live.sl
 
@@ -388,6 +452,7 @@ class TrendlineLiveAdapter:
                     "tp":       round(live.tp, d),
                 })
                 if result.retcode == mt5.TRADE_RETCODE_DONE:
+                    mt5_cache.invalidate_positions()
                     logger.debug(
                         f"[TL] Trail stop updated | #{live.ticket} | SL moved to {new_sl:.5f}"
                     )
@@ -398,14 +463,14 @@ class TrendlineLiveAdapter:
         if not self._validate_symbol(symbol):
             return
 
-        sym_info = mt5.symbol_info(symbol)
+        sym_info = mt5_cache.symbol_info(symbol)
         if sym_info is None:
             logger.error(f"[TL] Symbol {symbol} not found")
             return
         if not sym_info.visible:
             mt5.symbol_select(symbol, True)
 
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
         if tick is None:
             logger.error(f"[TL] No tick data for {symbol}")
             return
@@ -435,58 +500,93 @@ class TrendlineLiveAdapter:
         # Enforce broker minimum stop distance from the relevant market price.
         min_dist = sym_info.trade_stops_level * sym_info.point
         sl = signal.stop_price
-        tp = signal.target_price
         if is_long:
             if stop_price - sl < min_dist:
                 sl = round(stop_price - min_dist * 1.1, d)
-            if tp - stop_price < min_dist:
-                tp = round(stop_price + min_dist * 1.1, d)
         else:
             if sl - stop_price < min_dist:
                 sl = round(stop_price + min_dist * 1.1, d)
-            if stop_price - tp < min_dist:
-                tp = round(stop_price - min_dist * 1.1, d)
 
-        result = mt5.order_send({
-            "action":       mt5.TRADE_ACTION_DEAL,
-            "symbol":       symbol,
-            "volume":       lots,
-            "type":         order_type,
-            "price":        round(price, d),
-            "sl":           round(sl, d),
-            "tp":           round(tp, d),
-            "deviation":    20,
-            "magic":        TL_MAGIC,
-            "comment":      "Trendline_MKT",
-            "type_time":    mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
-        })
+        def clamp_tp(tp: float) -> float:
+            if is_long:
+                return round(stop_price + min_dist * 1.1, d) if tp - stop_price < min_dist else tp
+            return round(stop_price - min_dist * 1.1, d) if stop_price - tp < min_dist else tp
 
-        if result.retcode == mt5.TRADE_RETCODE_DONE:
-            positions = mt5.positions_get(ticket=result.order) or []
-            fill_price = positions[0].price_open if positions else price
-            self._open[result.order] = _OpenPosition(
-                signal=signal,
-                fill_price=fill_price,
-            )
-            self._generator.notify_trade_opened()
-            record_ticket(result.order, strategy="TL")
-            logger.info(
-                f"[TL] MARKET {signal.direction.upper()} | {symbol} | "
-                f"Lots={lots:.2f} | Fill={fill_price:.5f} "
-                f"SL={sl:.5f} TP={tp:.5f} | pattern={signal.pattern} | #{result.order}"
-            )
+        # A split becomes two independent MT5 positions sharing one SL: the
+        # first carries TP1, the second TP2, and _manage_positions trails each
+        # ticket separately (it reads every ticket's own tp back from MT5).
+        # Two orders rather than one partial-close because the adapter already
+        # tracks positions by ticket and never has to watch for a fill mid-bar.
+        legs: list[tuple[float, float]]      # (lots, tp)
+        split = None
+        if signal.target_price_2 is not None:
+            split = split_lots(lots, self._cfg.tp1_fraction,
+                               sym_info.volume_min, sym_info.volume_step)
+            if split is None:
+                logger.info(
+                    f"[TL] Split skipped | {lots:.2f} lots cannot divide into two legs at or "
+                    f"above volume_min={sym_info.volume_min} (step={sym_info.volume_step}) — "
+                    f"placing one undivided order at TP1"
+                )
+        if split is not None:
+            legs = [(split[0], clamp_tp(signal.target_price)),
+                    (split[1], clamp_tp(signal.target_price_2))]
         else:
-            logger.error(
-                f"[TL] Market order failed | code={result.retcode} | {result.comment}"
-            )
+            legs = [(lots, clamp_tp(signal.target_price))]
+
+        placed = 0
+        for leg_no, (leg_lots, tp) in enumerate(legs, start=1):
+            result = mt5.order_send({
+                "action":       mt5.TRADE_ACTION_DEAL,
+                "symbol":       symbol,
+                "volume":       leg_lots,
+                "type":         order_type,
+                "price":        round(price, d),
+                "sl":           round(sl, d),
+                "tp":           round(tp, d),
+                "deviation":    20,
+                "magic":        TL_MAGIC,
+                "comment":      f"Trendline_MKT_TP{leg_no}" if len(legs) > 1 else "Trendline_MKT",
+                "type_time":    mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            })
+
+            if result.retcode == mt5.TRADE_RETCODE_DONE:
+                # Read straight from MT5, not the snapshot: this position did
+                # not exist when the tick's snapshot was taken.
+                mt5_cache.invalidate_positions()
+                positions = mt5.positions_get(ticket=result.order) or []
+                fill_price = positions[0].price_open if positions else price
+                self._open[result.order] = _OpenPosition(
+                    signal=signal,
+                    fill_price=fill_price,
+                )
+                record_ticket(result.order, strategy="TL")
+                placed += 1
+                leg_txt = f" leg{leg_no}/{len(legs)}" if len(legs) > 1 else ""
+                logger.info(
+                    f"[TL] MARKET {signal.direction.upper()}{leg_txt} | {symbol} | "
+                    f"Lots={leg_lots:.2f} | Fill={fill_price:.5f} "
+                    f"SL={sl:.5f} TP={tp:.5f} | pattern={signal.pattern} | #{result.order}"
+                )
+            else:
+                logger.error(
+                    f"[TL] Market order failed (leg {leg_no}/{len(legs)}) | "
+                    f"code={result.retcode} | {result.comment}"
+                )
+
+        # Gate on whether anything actually opened, not on how many legs did:
+        # a filled leg 1 with a rejected leg 2 is still a live position, and
+        # leaving the generator un-gated would let it stack another setup on top.
+        if placed:
+            self._generator.notify_trade_opened()
 
     def _time_exit(self, symbol: str, ticket: int) -> None:
         if ticket not in self._open:
             return
         from src.logger import logger
 
-        positions = mt5.positions_get(ticket=ticket) or []
+        positions = mt5_cache.positions_get(ticket=ticket)
         if not positions:
             del self._open[ticket]
             if not self._open:
@@ -494,7 +594,7 @@ class TrendlineLiveAdapter:
             return
 
         pos  = positions[0]
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt5_cache.symbol_info_tick(symbol)
         if tick is None:
             return
 
@@ -517,6 +617,7 @@ class TrendlineLiveAdapter:
         })
 
         if result.retcode == mt5.TRADE_RETCODE_DONE:
+            mt5_cache.invalidate_positions()
             logger.info(f"[TL] Shutdown exit | #{pos.ticket} | PnL ${pos.profit:.2f}")
             del self._open[ticket]
             if not self._open:
@@ -576,10 +677,18 @@ class TrendlineLiveAdapter:
         kicked in. Halves the minimum-risk floor and widens touch/steepness
         tolerances rather than removing them, so a setup still has to clear
         a real (if lower) bar — this only widens which genuine signals
-        qualify, it never fabricates one."""
+        qualify, it never fabricates one.
+
+        No absolute floor is applied. `base` already carries this symbol's
+        volatility-scaled thresholds from TL_TARGETS, so a raw `max(3.0, ...)`
+        guard here is not a safety net — it is a US30-sized constant that
+        exceeds any achievable stop distance on FX. USDJPYm's median H1 bar is
+        0.147, so a 3.0 floor is ~20x a whole bar: every boosted signal on the
+        highest-frequency TL symbol was rejected from 14:00 ET onward on any
+        day quiet enough for the booster to engage."""
         return _dc_replace(
             base,
-            min_risk_points=max(3.0, base.min_risk_points * 0.5),
+            min_risk_points=base.min_risk_points * 0.5,
             touch_tolerance_points=base.touch_tolerance_points * 1.5,
             steepness_max_ratio=base.steepness_max_ratio * 1.5,
         )
@@ -587,12 +696,12 @@ class TrendlineLiveAdapter:
     def _compute_lots(self, symbol: str, signal: Signal) -> Optional[float]:
         from src.logger import logger
 
-        sym_info = mt5.symbol_info(symbol)
+        sym_info = mt5_cache.symbol_info(symbol)
         if sym_info is None:
             logger.error(f"[TL] No symbol info for {symbol}")
             return None
 
-        account = mt5.account_info()
+        account = mt5_cache.account_info()
         if account is None:
             return None
 
@@ -686,15 +795,12 @@ class TrendlineLiveAdapter:
             return False
 
         # deal.time (like bar/tick time) is stamped in the broker's server
-        # clock, so the from/to boundaries passed to history_deals_get must
-        # be expressed in that same clock — shift our true-UTC boundaries by
-        # the measured broker offset rather than a hardcoded guess.
-        ny_midnight = datetime.now(NY_TZ).replace(hour=0, minute=0, second=0, microsecond=0)
-        from_date = ny_midnight.astimezone(timezone.utc) + self._broker_utc_offset
-        to_date = datetime.now(timezone.utc) + self._broker_utc_offset
-
+        # clock, so the from/to boundaries must be expressed in that same clock
+        # — mt5_cache shifts our true-UTC boundaries by the measured broker
+        # offset rather than a hardcoded guess, and fetches the window once per
+        # loop tick for all three strategies instead of once per adapter.
         try:
-            deals = mt5.history_deals_get(from_date, to_date) or []
+            deals = mt5_cache.history_deals_today(self._broker_utc_offset, NY_TZ)
         except Exception as exc:
             logger.warning(f"[TL] Failed to fetch history deals: {exc}")
             deals = []
@@ -752,7 +858,7 @@ class TrendlineLiveAdapter:
         if self._drawdown_halted:
             return False
 
-        account = mt5.account_info()
+        account = mt5_cache.account_info()
         if account is None:
             return False
 
