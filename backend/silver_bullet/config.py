@@ -75,17 +75,19 @@ class SilverBulletConfig:
     # When True the position is split in two: `tp1_fraction` of it closes at
     # `tp1_rr`, the remainder runs to `tp2_rr`. Overrides `target_mode`.
     #
-    # ⚠ This is the reward floor the note above says not to add. Enabling it
-    # replaces the nearest-liquidity target with a 3R floor, and that target is
-    # where Silver Bullet's edge lives: measured over the full ~17-month M5
-    # history for all three live symbols, a floor of 0.50R and above took the
-    # strategy from +$4,820 net / ~62% win rate to +$118 / ~46%. The trade
-    # count does not change — a floor does not filter setups, it relocates the
-    # target past where these fast scalps actually reverse.
+    # DISABLED — this is the reward floor the note above says not to add.
+    # Enabling it replaces the nearest-liquidity target with a 3R floor, and
+    # that target is where Silver Bullet's edge lives: measured over the full
+    # ~17-month M5 history for all three live symbols (backtests/split_compare.py,
+    # 2026-08-15), the identical 135 trades produce:
     #
-    # Enabled here at explicit request. Set False to restore the measured
-    # behaviour; that is the single highest-value revert in this config.
-    split_targets: bool = True
+    #     split ON  (3R/4R)  :  -$940 net combined, PF 0.64–1.03, ~46% win rate
+    #     split OFF (liquidity): +$5,245 net combined, PF 1.99–5.71, ~70% win rate
+    #
+    # A floor does not filter setups, it relocates the target past where these
+    # fast scalps actually reverse. Do not re-enable without new measurements
+    # that beat the liquidity target on the same data.
+    split_targets: bool = False
     tp1_rr: float = 3.0
     tp2_rr: float = 4.0
     tp1_fraction: float = 0.5

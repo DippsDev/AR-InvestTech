@@ -6,6 +6,16 @@ factor — top 3 per strategy. US30m is deliberately excluded: it placed
 #6/12 for Silver Bullet and outside the top 3 for Trendline, so it lost its
 spot to better performers.
 
+XAUUSDm was added to SB_TARGETS on 2026-08-15 after a dedicated evaluation
+(backtests/sb_candidate_eval.py): over the full ~17-month M5 history with
+the current live config it ran PF 2.56 / +$632 / 65% win rate (23 trades),
+and PF 3.10 over the recent 180-day campaign window — above GBPUSDm's
+numbers, making it SB's third-best instrument. Its Trendline results were
+negative in the recent window (PF 0.77–0.89), so it belongs to SB only.
+USTECm was evaluated for SB at the same time and rejected (PF 1.37 full
+history, 0.39 recent) — it stays Trendline-only, where its evidence is
+stronger (PF 1.79).
+
 Threshold overrides scale US30's tuned point-based parameters (fvg size,
 stop buffer, tolerances, min risk) by each symbol's median M5 bar range
 relative to US30's over the same window (24.9 points) — the same
@@ -18,6 +28,7 @@ SB_TARGETS: dict[str, dict[str, float]] = {
     "DE30m":   dict(fvg_min_points=10.4578,   stop_buffer_points=0.373494,   min_risk_points=3.73494),
     "EURUSDm": dict(fvg_min_points=0.00015743, stop_buffer_points=0.0000056225, min_risk_points=0.0000562249),
     "GBPUSDm": dict(fvg_min_points=0.00021928, stop_buffer_points=0.0000078313, min_risk_points=0.0000783133),
+    "XAUUSDm": dict(fvg_min_points=3.19639,   stop_buffer_points=0.114157,   min_risk_points=1.14157),
 }
 
 # symbol -> TrendlineConfig field overrides
