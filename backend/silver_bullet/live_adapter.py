@@ -278,13 +278,25 @@ class SilverBulletLiveAdapter:
                 continue
             # Regular-window trade: close when window ends.
             # Off-hours trade: close at daily cutoff.
+            # LOSS-ONLY rule (2026-08-15, owner request): the time exit exists
+            # to cut trades that did not work within their window — a position
+            # in profit is already protected by breakeven/trailing and is left
+            # to run to its TP or trail stop instead of being flattened on a
+            # clock boundary. News-day flatten and shutdown() close everything
+            # regardless of P&L — only this window-end path is loss-only.
             pos = self._open[ticket]
             should_exit = (
                 (not pos.is_off_hours and not in_window) or
                 (pos.is_off_hours and past_cutoff)
             )
-            logger.debug(f"[SB] Time-exit check | #{ticket} | should_exit={should_exit}")
             if should_exit:
+                live = mt5_cache.positions_get(ticket=ticket)
+                if live and live[0].profit >= 0:
+                    logger.debug(
+                        f"[SB] Time-exit skipped | #{ticket} | P&L=${live[0].profit:+.2f} "
+                        f"— in profit at window end, left running (BE/trail still active)"
+                    )
+                    continue
                 self._time_exit(symbol, ticket)
 
         # 4. Manage every pending order — cancel any whose window has ended.
