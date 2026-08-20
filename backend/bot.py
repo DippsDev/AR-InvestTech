@@ -20,6 +20,7 @@ from mutanabby.config import MutanabbyConfig
 from mutanabby.live_adapter import MutanabbyLiveAdapter
 from multi_symbol_targets import MB_TARGETS, SB_TARGETS, TL_TARGETS
 from src import mt5_cache
+from src.aggressive_stops import ATR_RISK_MULT, STOP_BUFFER_MULT, apply_aggressive_stops
 from src.data_collector import (
     connect_mt5,
     disconnect_mt5,
@@ -45,6 +46,8 @@ class SilverBulletBot:
                 ("10:00", "11:00"), ("11:00", "12:00"),
                 ("13:30", "14:30"),
             ]
+            # Wider stops / later breakeven are applied after per-symbol
+            # overrides below — SB_TARGETS would clobber a buffer change here.
         if config.SB_OFF_HOURS:
             base_cfg.off_hours_trading = True
         # Respect the SB_NEWS env toggle — when True, no new trades on high-impact news days.
@@ -90,6 +93,8 @@ class SilverBulletBot:
         self.sb_adapters: dict[str, SilverBulletLiveAdapter] = {}
         for symbol, overrides in SB_TARGETS.items():
             cfg = _dc_replace(base_cfg, symbol=symbol, **overrides)
+            if config.SB_AGGRESSIVE:
+                cfg = apply_aggressive_stops(cfg)
             risk_share = config.SB_RISK_PCT / self._instance_count
             self.sb_adapters[symbol] = SilverBulletLiveAdapter(
                 cfg, symbol=symbol, risk_pct_override=risk_share
@@ -99,6 +104,8 @@ class SilverBulletBot:
         if self.tl_enabled:
             for symbol, overrides in TL_TARGETS.items():
                 cfg = _dc_replace(base_tl_cfg, symbol=symbol, **overrides)
+                if config.SB_AGGRESSIVE:
+                    cfg = apply_aggressive_stops(cfg)
                 risk_share = config.TL_RISK_PCT / self._instance_count
                 self.tl_adapters[symbol] = TrendlineLiveAdapter(
                     cfg, symbol=symbol, risk_pct_override=risk_share
@@ -108,6 +115,8 @@ class SilverBulletBot:
         if self.mb_enabled:
             for symbol, overrides in MB_TARGETS.items():
                 cfg = _dc_replace(base_mb_cfg, symbol=symbol, **overrides)
+                if config.SB_AGGRESSIVE:
+                    cfg = apply_aggressive_stops(cfg)
                 risk_share = config.MB_RISK_PCT / self._mb_instance_count
                 self.mb_adapters[symbol] = MutanabbyLiveAdapter(
                     cfg, symbol=symbol, risk_pct_override=risk_share
@@ -182,6 +191,13 @@ class SilverBulletBot:
             f"MB symbols: {mb_syms} | SB/TL risk split across "
             f"{self._instance_count} instances"
         )
+        if config.SB_AGGRESSIVE:
+            logger.info(
+                f"[Bot] Aggressive wide stops | buffer x{STOP_BUFFER_MULT:g} "
+                f"(SB/TL) | ATR stop x{ATR_RISK_MULT:g} (MB) | "
+                f"SB breakeven/trail loosened, early-exit off | "
+                f"dollar risk unchanged (smaller lots)"
+            )
         if self.mb_adapters:
             logger.info(
                 f"[MB] Mutanabby live | {len(self.mb_adapters)} instance(s) | "

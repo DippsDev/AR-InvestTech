@@ -220,7 +220,7 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
       <div style={cardStyle}>
         <SectionHeader label="Strategy Toggles" color="var(--dash-accent-purple)" />
         <div style={{ padding: "6px 16px" }}>
-          {tog("aggressive", "Aggressive Mode",   "2–3 trades/day: lower filters + London session · restart bot to apply")}
+          {tog("aggressive", "Aggressive Mode",   "2–3 trades/day: lower filters + London session + wider stops · restart bot to apply")}
           {tog("off_hours",  "Off-Hours Trading", "Trade outside session windows · max 3 fills/day · closes 23:00–00:00 BWT · restart bot to apply")}
           {tog("news",       "Skip News Days",    "Pause all entries on NFP/FOMC/CPI/GDP release days · restart bot to apply", true)}
         </div>

@@ -135,7 +135,9 @@ except ValueError:
 SB_TRAIL      = os.getenv("SB_TRAIL",      "true").lower() == "true"
 SB_BIAS       = os.getenv("SB_BIAS",       "false").lower() == "true"
 SB_NEWS       = os.getenv("SB_NEWS",       "true").lower() == "true"
-# Aggressive mode: lower signal filters + extra windows to target 2–3 trades/day
+# Aggressive mode: lower signal filters + extra windows to target 2–3 trades/day,
+# and wider stops (8× buffer / later breakeven) so a retest of the sweep does
+# not stop the trade out. See src/aggressive_stops.py.
 SB_AGGRESSIVE = os.getenv("SB_AGGRESSIVE", "false").lower() == "true"
 # Off-hours mode: scan and trade outside defined session windows (max 3 fills/day, closes 17:00 ET)
 SB_OFF_HOURS  = os.getenv("SB_OFF_HOURS",  "false").lower() == "true"
