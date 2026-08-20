@@ -264,7 +264,7 @@ API_TOKEN=
 # AR_SSL_CERTFILE=...  AR_SSL_KEYFILE=...       # optional HTTPS
 
 # ── Silver Bullet ─────────────────────────────────────────────
-SB_SYMBOL=US30                # display default; live symbols come from SB_TARGETS
+SB_SYMBOL=DE30m               # display fallback; live symbols come from SB_TARGETS
 SB_RISK_PCT=1.0
 SB_MIN_BALANCE=15.0
 SB_MAX_RISK_USD=1.0
@@ -376,7 +376,7 @@ Single-page app with five screens, navigated via a persistent sidebar (desktop) 
 | Screen | Status | Description |
 |---|---|---|
 | **Activation** | Live | License key entry (validated against Supabase), MT5 connection setup |
-| **Dashboard** | Live | Real-time equity, open trades across all strategies, session info, market tickers (US30 + gold tile), live log |
+| **Dashboard** | Live | Real-time equity, open trades across all strategies, session info, live symbol heatmap, live log |
 | **Trades** | Live | Closed trade history with win/loss/all filter |
 | **Performance** | In development | Equity curve, win-rate donut, monthly P&L chart |
 | **Settings** | Live | MT5 credentials, per-strategy risk/toggle editor (hot-reloads backend config) |

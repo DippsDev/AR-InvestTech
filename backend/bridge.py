@@ -430,7 +430,7 @@ class BotBridge:
             self._bot_thread.start()
             self._bot_running = True
             self._start_time = time.time()
-        self._add_log("[START]", "win", "Bot started · scanning US30 for Silver Bullet setups", speaker="Boss")
+        self._add_log("[START]", "win", "Bot started · scanning configured symbols for setups", speaker="Boss")
 
     def _stop_bot(self) -> None:
         with self._lifecycle_lock:

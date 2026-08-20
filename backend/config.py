@@ -74,13 +74,13 @@ BOT_STATE_FILE = str(paths.app_data_dir() / "bot_state.json")
 ANTHROPIC_API_KEY   = os.getenv("ANTHROPIC_API_KEY", "").strip()
 NEWS_ANALYST_ENABLED = os.getenv("NEWS_ANALYST_ENABLED", "true").lower() == "true"
 
-# Silver Bullet — US30 (Dow Jones), active NY 10:00–12:00
-# Set SB_SYMBOL in .env if your broker uses a different name (e.g. US30Cash, #US30, DJ30)
-SB_SYMBOL = os.getenv("SB_SYMBOL", "US30")
+# Display-only ticker the dashboard used to pin; live trading symbols come
+# from SB_TARGETS / TL_TARGETS / MB_TARGETS in multi_symbol_targets.py.
+# Set SB_SYMBOL in .env only if some leftover UI path still needs a fallback.
+SB_SYMBOL = os.getenv("SB_SYMBOL", "DE30m")
 
-# Secondary read-only market reading shown on the dashboard alongside US30 —
-# not traded, just displayed. Set SB_GOLD_SYMBOL in .env if your broker uses
-# a different name (e.g. XAUUSDm, GOLD, XAUUSD.a).
+# Optional extra read-only market reading on the dashboard — not traded.
+# Set SB_GOLD_SYMBOL in .env if your broker uses a different gold name.
 SB_GOLD_SYMBOL = os.getenv("SB_GOLD_SYMBOL", "XAUUSD")
 
 # Risk parameters (editable via Settings page)
@@ -152,14 +152,9 @@ try:
 except ValueError:
     SB_MIN_STOP_SPREAD_MULT = 1.5
 
-# Trendline strategy — same instrument as Silver Bullet (US30), H1 candles,
-# aggressive market-order entries on trendline touch + reversal candlestick
-# confirmation. Runs alongside Silver Bullet in the same bot process on the
-# same symbol; fully independent (own magic number, own risk config). Off by
-# default so existing installs are unaffected. bot.py always overrides this
-# with whatever US30 symbol Silver Bullet resolved, so the two strategies can
-# never end up trading different instruments.
-TL_SYMBOL  = os.getenv("TL_SYMBOL", "US30")
+# Trendline — H1 trendline touch + reversal candle. Live symbols come from
+# TL_TARGETS (DE30m, USDJPYm, USTECm), not this fallback. Off by default.
+TL_SYMBOL  = os.getenv("TL_SYMBOL", "DE30m")
 TL_ENABLED = os.getenv("TL_ENABLED", "false").lower() == "true"
 
 try:
