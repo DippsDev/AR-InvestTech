@@ -1,34 +1,30 @@
 """Live trading targets for the multi-symbol rollout.
 
-Chosen from the 180-day, 11-symbol backtest campaign (see
-backend/backtests/multi_sb_*.json / multi_tl_*.json), ranked by profit
-factor — top 3 per strategy. US30m is deliberately excluded: it placed
-#6/12 for Silver Bullet and outside the top 3 for Trendline, so it lost its
-spot to better performers.
+Silver Bullet symbols were rebuilt after an Aggressive-mode scan (extra
+London + 13:30 ET windows, multiple trades per window, volatility-scaled
+FVG/stop). On that screen FX majors went 0% win rate; DE30m was the only
+name Aggressive improved vs baseline; USTECm stayed profitable under
+Aggressive (PF 6.2) even though core-window-only was stronger.
 
-XAUUSDm was added to SB_TARGETS on 2026-08-15 after a dedicated evaluation
-(backtests/sb_candidate_eval.py): over the full ~17-month M5 history with
-the current live config it ran PF 2.56 / +$632 / 65% win rate (23 trades),
-and PF 3.10 over the recent 180-day campaign window — above GBPUSDm's
-numbers, making it SB's third-best instrument. Its Trendline results were
-negative in the recent window (PF 0.77–0.89), so it belongs to SB only.
-USTECm was evaluated for SB at the same time and rejected (PF 1.37 full
-history, 0.39 recent) — it stays Trendline-only, where its evidence is
-stronger (PF 1.79).
+EURUSDm / GBPUSDm were therefore dropped. US30m stays out of SB (it placed
+#6/12 on the original 180-day campaign and Aggressive did not lift it).
+XAUUSDm stays: it was added on 2026-08-15 after a dedicated evaluation
+(backtests/sb_candidate_eval.py) at PF 2.56 full history / 3.10 recent, and
+that result was not part of the FX cull. USTECm's earlier core-window SB
+rejection (PF 1.37 / 0.39) is overridden by the Aggressive screen.
+
+Trendline / Mutanabby lists are unchanged from the 180-day campaign.
 
 Threshold overrides scale US30's tuned point-based parameters (fvg size,
 stop buffer, tolerances, min risk) by each symbol's median M5 bar range
-relative to US30's over the same window (24.9 points) — the same
-volatility-scaling approach used to make the backtest thresholds meaningful
-across very different price scales (an index at ~50,000 vs. EURUSD at ~1.1).
+relative to US30's (24.9 points).
 """
 
 # symbol -> SilverBulletConfig field overrides
 SB_TARGETS: dict[str, dict[str, float]] = {
     "DE30m":   dict(fvg_min_points=10.4578,   stop_buffer_points=0.373494,   min_risk_points=3.73494),
-    "EURUSDm": dict(fvg_min_points=0.00015743, stop_buffer_points=0.0000056225, min_risk_points=0.0000562249),
-    "GBPUSDm": dict(fvg_min_points=0.00021928, stop_buffer_points=0.0000078313, min_risk_points=0.0000783133),
     "XAUUSDm": dict(fvg_min_points=3.19639,   stop_buffer_points=0.114157,   min_risk_points=1.14157),
+    "USTECm":  dict(fvg_min_points=15.4618,   stop_buffer_points=0.552209,   min_risk_points=5.52209),
 }
 
 # symbol -> TrendlineConfig field overrides
