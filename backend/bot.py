@@ -126,9 +126,9 @@ class SilverBulletBot:
         self._gui_mode = gui_mode  # when True, bridge owns MT5 — skip disconnect on shutdown
         self._tick_count = 0       # loop ticks, for the periodic MT5 snapshot log
 
-        # News Analyst (see news_analyst.py) is US30-specific shadow-mode
-        # commentary and isn't wired to any of the multi-symbol targets —
-        # not called from run() below.
+        # News Analyst — daily bias for the live book (see news_analyst.py).
+        # Date is the last NY day we already attempted the Claude call.
+        self._news_analyst_date: str | None = None
 
     def initialize(self) -> bool:
         logger.info("=" * 60)
@@ -226,6 +226,65 @@ class SilverBulletBot:
         except Exception as exc:
             logger.warning(f"[{label}] Connection diagnostics unavailable for {symbol}: {exc}")
 
+    def _live_symbols(self) -> list[str]:
+        return list(dict.fromkeys([
+            *self.sb_adapters,
+            *self.tl_adapters,
+            *self.mb_adapters,
+        ]))
+
+    def _maybe_run_news_analyst(self) -> None:
+        """Shadow-mode: once per NY trading day, ask Claude for a directional
+        bias on every live symbol and log/persist it for later evaluation.
+        Also grades any prior day's calls against what each price actually
+        did. Failures here must never take down the bot loop."""
+        if not (config.NEWS_ANALYST_ENABLED and config.ANTHROPIC_API_KEY):
+            return
+
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+
+        today_ny = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d")
+        if today_ny == self._news_analyst_date:
+            return
+
+        symbols = self._live_symbols()
+        if not symbols:
+            return
+
+        try:
+            import news_analyst
+
+            prices: dict[str, float] = {}
+            for symbol in symbols:
+                tick = mt5_cache.symbol_info_tick(symbol)
+                if tick is None:
+                    logger.info(f"[Analyst] No tick data for {symbol} — skipping today's bias call")
+                    return
+                prices[symbol] = (tick.bid + tick.ask) / 2
+
+            if not news_analyst.has_called_today(today_ny, symbols):
+                calls = news_analyst.get_daily_bias(prices)
+                for call in calls:
+                    news_analyst.record_bias(call)
+                    logger.info(
+                        f"[Analyst] Bias {call.symbol} {call.direction.upper()} "
+                        f"(confidence {call.confidence:.2f}) | {call.reasoning[:200]}"
+                    )
+
+            self._news_analyst_date = today_ny
+
+            graded = news_analyst.grade_pending_calls(prices, current_date=today_ny)
+            for g in graded:
+                outcome = "correct" if g.graded else "incorrect"
+                logger.info(
+                    f"[Analyst] Graded {g.date} {g.symbol} | called {g.direction} | "
+                    f"actual {g.actual_direction} | {outcome}"
+                )
+        except Exception as exc:
+            self._news_analyst_date = today_ny
+            logger.warning(f"[Analyst] Daily bias check failed: {exc}")
+
     def run(self) -> None:
         if not self.initialize():
             logger.error("Initialization failed — exiting")
@@ -238,6 +297,7 @@ class SilverBulletBot:
                 # info/ticks through src/mt5_cache, so each of those costs one
                 # IPC round-trip per loop tick instead of one per adapter.
                 mt5_cache.begin_tick()
+                self._maybe_run_news_analyst()
 
                 # Adaptive daily-trade floor: share every instance's real,
                 # MT5-history-derived trade count with all the others so each

@@ -37,6 +37,7 @@ class _BotLogHandler(logging.Handler):
         # Analyst entries first: several share substrings ("No tick data",
         # "failed") with generic Scanner/Risk rules below, and the first
         # matching keyword wins.
+        "Analyst] Entry blocked":   ("[BIAS]",  "warn", "Analyst"),
         "Analyst] Bias":            ("[BIAS]",  "sig",  "Analyst"),
         "Analyst] Graded":          ("[GRADE]", "inf",  "Analyst"),
         "Analyst] No tick data":    ("[INFO]",  "inf",  "Analyst"),

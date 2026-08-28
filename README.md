@@ -299,9 +299,10 @@ MB_MAX_TRADES_PER_DAY=3
 DAILY_TRADE_FLOOR=3
 DAILY_TRADE_FLOOR_TIME_ET=14:00
 
-# ── News Analyst (shadow mode, observational only) ────────────
+# ── News Analyst (daily bias; filters entries by default) ─────
 # ANTHROPIC_API_KEY=...
 # NEWS_ANALYST_ENABLED=true
+# NEWS_ANALYST_FILTER=true
 ```
 
 > `.env` is listed in `.gitignore` and is never committed.
@@ -431,7 +432,7 @@ The app requires a license key in the format `ARB-XXXX-XXXX-XXXX`, validated aga
 - **MT5 snapshot cache**: `src/mt5_cache.py` opens one snapshot window per 5-second loop tick; every adapter reads account/deals/positions/ticks from it. A periodic `[Bot] MT5 snapshot` log line reports round-trips vs cache hits.
 - **Bot logger**: Logs to the app-data `logs/trades.log` via a rotating handler; `BotBridge` also routes records into the in-memory buffer served by `/log`.
 - **DST handling**: Session windows use `America/New_York` via `zoneinfo`.
-- **News Analyst**: `news_analyst.py` logs a shadow-mode daily directional bias (Claude API) once per NY day for later evaluation. It never gates or sizes real trades and is fully disabled without an API key.
+- **News Analyst**: `news_analyst.py` logs a daily directional bias (Claude API) once per NY day for each live SB/TL/MB symbol, then grades those calls against the next day's price. With `NEWS_ANALYST_FILTER=true` (default), live adapters only take longs on a bullish call and shorts on a bearish call; a missing or neutral call does not block. Fully disabled without an API key.
 
 ---
 

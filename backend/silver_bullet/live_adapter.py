@@ -405,6 +405,11 @@ class SilverBulletLiveAdapter:
                     continue
                 if self._stop_inside_spread(symbol, signal):
                     continue
+                from news_analyst import reject_entry
+                blocked = reject_entry(symbol, signal.direction, today_ny)
+                if blocked:
+                    logger.info(f"[Analyst] Entry blocked | {blocked}")
+                    continue
                 lots = self._compute_lots(symbol, signal)
                 if lots is not None:
                     logger.info(
@@ -681,6 +686,12 @@ class SilverBulletLiveAdapter:
             logger.warning("[SB] Limit order blocked — high-impact news day")
             return
 
+        from news_analyst import reject_entry
+        blocked = reject_entry(symbol, signal.direction)
+        if blocked:
+            logger.info(f"[Analyst] Entry blocked | {blocked}")
+            return
+
         if not self._validate_symbol(symbol):
             return
 
@@ -754,6 +765,12 @@ class SilverBulletLiveAdapter:
 
         if self._cfg.skip_news_days and is_news_day(datetime.now(NY_TZ).date()):
             logger.warning("[SB] Market order blocked — high-impact news day")
+            return
+
+        from news_analyst import reject_entry
+        blocked = reject_entry(symbol, signal.direction)
+        if blocked:
+            logger.info(f"[Analyst] Entry blocked | {blocked}")
             return
 
         if not self._validate_symbol(symbol):

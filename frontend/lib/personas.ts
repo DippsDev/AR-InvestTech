@@ -45,7 +45,7 @@ export const PERSONAS: Record<string, Persona> = {
     idleNote: "Warming up.",
   },
   Analyst: {
-    name: "Analyst", color: "#14B8A6", role: "Daily news bias (shadow mode)",
+    name: "Analyst", color: "#14B8A6", role: "Daily news bias — gates entries",
     skin: "#E0AC69", hair: "#3B2412",
     idleNote: "No bias call yet today.",
   },

@@ -67,12 +67,14 @@ SSL_KEYFILE  = os.getenv("AR_SSL_KEYFILE", "").strip() or None
 # leaving the account unmanaged. See bridge.py.
 BOT_STATE_FILE = str(paths.app_data_dir() / "bot_state.json")
 
-# News Analyst — shadow-mode daily directional bias (see news_analyst.py).
-# Purely observational: logs a bias call once per NY trading day for later
-# evaluation. Never gates or sizes real trades. Disabled entirely (no API
-# call attempted) if no key is configured.
-ANTHROPIC_API_KEY   = os.getenv("ANTHROPIC_API_KEY", "").strip()
+# News Analyst — daily directional bias for the live book (see news_analyst.py).
+# One Claude call per NY trading day covering whatever SB/TL/MB symbols are
+# actually running. NEWS_ANALYST_FILTER (default on) lets that call block
+# new entries that fight the bias; it never sizes trades. Disabled entirely
+# (no API call attempted) if no key is configured.
+ANTHROPIC_API_KEY    = os.getenv("ANTHROPIC_API_KEY", "").strip()
 NEWS_ANALYST_ENABLED = os.getenv("NEWS_ANALYST_ENABLED", "true").lower() == "true"
+NEWS_ANALYST_FILTER  = os.getenv("NEWS_ANALYST_FILTER", "true").lower() == "true"
 
 # Display-only ticker the dashboard used to pin; live trading symbols come
 # from SB_TARGETS / TL_TARGETS / MB_TARGETS in multi_symbol_targets.py.

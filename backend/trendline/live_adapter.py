@@ -250,6 +250,11 @@ class TrendlineLiveAdapter:
                         continue
                     if self._stop_inside_spread(symbol, signal):
                         continue
+                    from news_analyst import reject_entry
+                    blocked = reject_entry(symbol, signal.direction, today_ny)
+                    if blocked:
+                        logger.info(f"[Analyst] Entry blocked | {blocked}")
+                        continue
                     lots = self._compute_lots(symbol, signal)
                     if lots is not None:
                         logger.info(
@@ -461,6 +466,12 @@ class TrendlineLiveAdapter:
 
     def _place_market(self, symbol: str, signal: Signal, lots: float) -> None:
         from src.logger import logger
+        from news_analyst import reject_entry
+
+        blocked = reject_entry(symbol, signal.direction)
+        if blocked:
+            logger.info(f"[Analyst] Entry blocked | {blocked}")
+            return
 
         if not self._validate_symbol(symbol):
             return

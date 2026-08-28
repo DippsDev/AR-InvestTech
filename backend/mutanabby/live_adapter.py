@@ -271,15 +271,20 @@ class MutanabbyLiveAdapter:
                 f"on {date_str}"
             )
         else:
-            lots = self._compute_lots(symbol, signal)
-            if lots is not None:
-                logger.info(
-                    f"[MB] About to place order | {signal.direction.upper()} "
-                    f"({signal.strength}) | entry={signal.entry_price:.5f} "
-                    f"stop={signal.stop_price:.5f} target={signal.target_price:.5f} | "
-                    f"lots={lots:.2f}"
-                )
-                self._place_market(symbol, signal, lots)
+            from news_analyst import reject_entry
+            blocked = reject_entry(symbol, signal.direction, today_ny)
+            if blocked:
+                logger.info(f"[Analyst] Entry blocked | {blocked}")
+            else:
+                lots = self._compute_lots(symbol, signal)
+                if lots is not None:
+                    logger.info(
+                        f"[MB] About to place order | {signal.direction.upper()} "
+                        f"({signal.strength}) | entry={signal.entry_price:.5f} "
+                        f"stop={signal.stop_price:.5f} target={signal.target_price:.5f} | "
+                        f"lots={lots:.2f}"
+                    )
+                    self._place_market(symbol, signal, lots)
 
         self._last_bar_time = latest_ts
         self._initialized = True
@@ -464,6 +469,12 @@ class MutanabbyLiveAdapter:
 
     def _place_market(self, symbol: str, signal: Signal, lots: float) -> None:
         from src.logger import logger
+        from news_analyst import reject_entry
+
+        blocked = reject_entry(symbol, signal.direction)
+        if blocked:
+            logger.info(f"[Analyst] Entry blocked | {blocked}")
+            return
 
         if not self._validate_symbol(symbol):
             return
