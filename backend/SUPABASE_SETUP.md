@@ -23,6 +23,7 @@ CREATE TABLE licenses (
   max_activations INT DEFAULT 1,
   activation_count INT DEFAULT 0,
   owner_email TEXT,
+  backend_url TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -46,9 +47,28 @@ ALTER TABLE license_activations ENABLE ROW LEVEL SECURITY;
 
 ## 3. Insert a license key
 
+Your own box (the gateway VPS) — leave `backend_url` empty so the dashboard
+handles it locally:
+
 ```sql
 INSERT INTO licenses (key, is_active, max_activations, owner_email)
-VALUES ('ARB-ABCD-1234-EFGH', TRUE, 2, 'user@example.com');
+VALUES ('MOJALEFA-5336', TRUE, 1, 'you@example.com');
+```
+
+A second customer on their own VPS — they still open
+https://www.ar-investech.uk/ and type only their key. Set `backend_url` to
+that VPS's reachable API (usually `http://THEIR_PUBLIC_IP:8000`). No second
+Cloudflare hostname is required; the gateway VPS proxies to this URL.
+
+```sql
+INSERT INTO licenses (key, is_active, max_activations, owner_email, backend_url)
+VALUES ('MOJALEFA-XXXX', TRUE, 1, 'customer@example.com', 'http://THEIR_PUBLIC_IP:8000');
+```
+
+If the `licenses` table already exists without `backend_url`:
+
+```sql
+ALTER TABLE licenses ADD COLUMN IF NOT EXISTS backend_url TEXT;
 ```
 
 ## 4. Configure the backend
@@ -73,13 +93,15 @@ Already added to `backend/requirements.txt`.
 ## 6. Test
 
 1. Start the backend: `python server.py`
-2. Open the frontend activation screen.
-3. Enter the backend URL and a license key from Supabase.
+2. Open https://www.ar-investech.uk/ (or `http://localhost:3000` in dev).
+3. Enter a license key from Supabase.
 4. Press **Activate**.
-5. Check that a row appears in `license_activations`.
+5. Check that a row appears in `license_activations` on **that key's** VPS
+   (the gateway VPS if `backend_url` is empty; the customer's VPS otherwise).
 
 ## Notes
 
 - `SUPABASE_SERVICE_KEY` is secret. Never expose it in frontend code or Git.
 - MT5 passwords are still stored only in `backend/.env`, not in Supabase.
 - If Supabase credentials are missing, the backend falls back to the original local-only validation.
+- `backend_url` is only read by the gateway VPS. Customers never type it.

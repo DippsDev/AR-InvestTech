@@ -183,6 +183,31 @@ Only then switch `MT5_SERVER` to the live server.
 
 ---
 
+## Adding a second customer (same website, own VPS)
+
+Customers only ever open https://www.ar-investech.uk/ and type a license key.
+Do **not** create a second Cloudflare hostname. Their bot runs on a second
+Windows VPS; your existing tunnelled box is the gateway.
+
+1. Provision their VPS the same way as this runbook (MT5 logged into **their**
+   account, `setup_vps.ps1`, autostart). On that box set `AR_BIND_HOST=0.0.0.0`
+   in `.env` so your gateway can reach port 8000.
+2. Firewall their port 8000 to **your gateway VPS public IP only**. Anyone
+   else hitting that port would be talking to a live trading API.
+3. Insert their key in Supabase with `backend_url` pointing at their VPS
+   (`http://THEIR_PUBLIC_IP:8000`). Leave your own license's `backend_url`
+   empty. See `backend/SUPABASE_SETUP.md`.
+4. Redeploy the dashboard (Vercel) so `/bot-api` rewrites stay on
+   www.ar-investech.uk, and restart **your** gateway backend so it picks up
+   `httpx` / the new proxy.
+5. They activate with their key on https://www.ar-investech.uk/. First request
+   hits your gateway, which proxies to their VPS; their machine records the
+   activation.
+
+They never see `bot.ar-investech.uk` or their VPS IP.
+
+---
+
 ## Operational notes
 
 **Watch out for:**

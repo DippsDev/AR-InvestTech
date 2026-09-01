@@ -35,7 +35,7 @@ export const PERSONAS: Record<string, Persona> = {
     idleNote: "No news-day halt active.",
   },
   Grader: {
-    name: "Grader", color: "#8B5CF6", role: "Trade grading",
+    name: "Grader", color: "#8B5CF6", role: "Closed-trade P&L",
     skin: "#D2986C", hair: "#7A3B2E", longHair: true,
     idleNote: "No closed trades to grade yet.",
   },

@@ -58,10 +58,17 @@ export default function Dashboard(props: Props) {
   const todaysTrades = trades.filter(t => t.date === today);
   const wins = trades.filter(t => t.win).length;
   const losses = trades.filter(t => !t.win).length;
+  // Realized P&L across the closed-trade history get_trades() returns
+  // (bot-magic deals over the last 30 days) — not the account's floating
+  // profit, which is open positions and already shown on the book card.
+  const realizedPnl = trades.reduce((sum, t) => sum + t.pnl, 0);
+  const realizedPnlText = realizedPnl >= 0
+    ? `+$${realizedPnl.toFixed(2)}`
+    : `-$${Math.abs(realizedPnl).toFixed(2)}`;
   const maxTrades = stats?.max_trades ? parseInt(stats.max_trades, 10) : undefined;
   const newsPaused = Boolean(stats?.session?.includes("News pause"));
 
-  const personaData: Record<string, { badge?: { text: string; color: string } }> = {
+  const personaData: Record<string, { badge?: { text: string; color: string } | { text: string; color: string }[] }> = {
     Boss: {
       badge: { text: stats?.running ? "LIVE" : "PAUSED", color: stats?.running ? "#22C55E" : "#6B7280" },
     },
@@ -85,7 +92,10 @@ export default function Dashboard(props: Props) {
       badge: { text: newsPaused ? "NEWS PAUSE" : "CLEAR", color: newsPaused ? "#EF4444" : "#22C55E" },
     },
     Grader: {
-      badge: { text: `${wins}W / ${losses}L`, color: "#8B5CF6" },
+      badge: [
+        { text: realizedPnlText, color: realizedPnl >= 0 ? "#22C55E" : "#EF4444" },
+        { text: `${wins}W / ${losses}L`, color: "#8B5CF6" },
+      ],
     },
     Scanner: {
       badge: { text: stats?.session ?? "--", color: "#3B82F6" },

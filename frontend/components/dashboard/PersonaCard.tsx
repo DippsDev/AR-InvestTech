@@ -2,15 +2,18 @@
 import type { Persona } from "@/lib/personas";
 import PixelAvatar from "./PixelAvatar";
 
+export type PersonaBadge = { text: string; color: string };
+
 interface Props {
   persona: Persona;
-  badge?: { text: string; color: string };
+  badge?: PersonaBadge | PersonaBadge[];
   note: string;
   time?: string;
   active?: boolean;
 }
 
 export default function PersonaCard({ persona, badge, note, time, active }: Props) {
+  const badges = badge == null ? [] : Array.isArray(badge) ? badge : [badge];
   return (
     <div
       className="dash-card"
@@ -33,22 +36,23 @@ export default function PersonaCard({ persona, badge, note, time, active }: Prop
 
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, flexWrap: "wrap" }}>
         <span style={{ fontSize: 14, fontWeight: 700, color: "var(--dash-text)" }}>{persona.name}</span>
-        {badge && (
+        {badges.map((b) => (
           <span
+            key={b.text}
             style={{
               fontSize: 9,
               fontWeight: 800,
               color: "#0B0E11",
-              background: badge.color,
+              background: b.color,
               padding: "2px 7px",
               borderRadius: 4,
               letterSpacing: ".03em",
               whiteSpace: "nowrap",
             }}
           >
-            {badge.text}
+            {b.text}
           </span>
-        )}
+        ))}
       </div>
       <div style={{ fontSize: 10, color: "var(--dash-text-dim)" }}>{persona.role}</div>
 

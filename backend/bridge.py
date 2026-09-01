@@ -6,10 +6,12 @@ from __future__ import annotations
 
 import json
 import logging
+import secrets
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+from urllib.parse import urlparse
 
 from src import paths
 
@@ -18,6 +20,27 @@ import machine_id
 import supabase_client
 
 LICENSE_FILE = paths.app_data_dir() / ".license"
+
+_SELF_BACKEND_URLS = {
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
+}
+
+
+def _remote_backend_url(raw) -> Optional[str]:
+    """Return a proxy target if `raw` is a different machine's API origin."""
+    if not raw:
+        return None
+    url = str(raw).strip().rstrip("/")
+    if not url:
+        return None
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return None
+    self_urls = {u.rstrip("/") for u in config.PUBLIC_BACKEND_URLS} | _SELF_BACKEND_URLS
+    if url in self_urls:
+        return None
+    return url
 
 
 # ── Log capture ─────────────────────────────────────────────────────────────
@@ -125,6 +148,12 @@ class BotBridge:
         self._supervisor_stop = threading.Event()
         self._restart_failures = 0
         self._next_restart_at = 0.0
+
+        # license key -> (monotonic deadline, remote url or None). None means
+        # "this key is local / unknown"; we still cache it so a dashboard poll
+        # doesn't hit Supabase every 5 seconds.
+        self._backend_url_cache: dict[str, tuple[float, Optional[str]]] = {}
+        self._backend_url_cache_ttl_s = 30.0
 
     # ── Desired-state persistence ────────────────────────────────────────────
 
@@ -365,6 +394,57 @@ class BotBridge:
 
         except Exception as exc:
             return {"ok": False, "error": f"Activation server error: {exc}"}
+
+    def remote_backend_url_for_token(self, token: str) -> Optional[str]:
+        """Return another VPS's API URL for this license key, or None.
+
+        None means handle the request on this machine: the token is this
+        box's API_TOKEN, the license belongs here (empty / self backend_url),
+        or the key is unknown. The dashboard always talks to the public site;
+        this is how a second customer's key reaches their own VPS without a
+        second tunnel hostname.
+        """
+        raw = (token or "").strip()
+        if not raw:
+            return None
+        api_token = config.API_TOKEN
+        if api_token and len(raw) == len(api_token) and secrets.compare_digest(raw, api_token):
+            return None
+        key = raw.upper()
+        if not key.startswith("MOJALEFA-") or len(key) != 13:
+            return None
+
+        now = time.monotonic()
+        cached = self._backend_url_cache.get(key)
+        if cached is not None and cached[0] > now:
+            return cached[1]
+
+        url = self._lookup_remote_backend_url(key)
+        self._backend_url_cache[key] = (now + self._backend_url_cache_ttl_s, url)
+        return url
+
+    def _lookup_remote_backend_url(self, key: str) -> Optional[str]:
+        if not supabase_client.is_configured():
+            return None
+        sb = supabase_client.get_supabase()
+        if sb is None:
+            return None
+        try:
+            resp = (
+                sb.table("licenses")
+                .select("backend_url,is_active")
+                .eq("key", key)
+                .execute()
+            )
+        except Exception:
+            return None
+        rows = resp.data or []
+        if not rows:
+            return None
+        row = rows[0]
+        if not row.get("is_active", True):
+            return None
+        return _remote_backend_url(row.get("backend_url"))
 
     # ── MT5 connection ────────────────────────────────────────────────────────
 

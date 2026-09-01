@@ -85,6 +85,12 @@ class TestCredentials:
         for path in ("/stats", "/bot/start", "/settings", "/trades"):
             assert call(path, LICENSE, LICENSE), path
 
+    def test_license_key_length_mismatch_with_api_token_still_authenticates(self):
+        # secrets.compare_digest raises if the strings differ in length. The
+        # license key is 13 chars and API_TOKEN is not, so the guard must
+        # skip the token compare instead of 500ing every dashboard poll.
+        assert call("/stats", LICENSE, LICENSE)
+
     def test_api_token_still_authenticates(self):
         # Accepting the license key must not remove the original credential.
         for path in ("/stats", "/bot/start", "/settings"):

@@ -56,6 +56,23 @@ CORS_ORIGINS = [
     ).split(",") if o.strip()
 ]
 
+# Public URL(s) of THIS machine's API. The tenant gateway compares a license's
+# backend_url against this list so a key that belongs here is handled locally
+# instead of proxied into a loop. Other customers get a different backend_url
+# (their VPS IP) in Supabase; the dashboard still only talks to this origin.
+PUBLIC_BACKEND_URLS = [
+    u.strip().rstrip("/")
+    for u in os.getenv(
+        "AR_PUBLIC_BACKEND_URLS",
+        "https://bot.ar-investech.uk",
+    ).split(",") if u.strip()
+]
+
+try:
+    GATEWAY_TIMEOUT_S = float(os.getenv("AR_GATEWAY_TIMEOUT_S", "60"))
+except ValueError:
+    GATEWAY_TIMEOUT_S = 60.0
+
 # Optional TLS certificate/key paths. When both are set, the API serves HTTPS.
 # Useful when exposing the backend directly on a public IP behind Cloudflare
 # "Full" SSL mode (self-signed origin cert) or "Full (strict)" with a valid cert.

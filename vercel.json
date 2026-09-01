@@ -2,5 +2,11 @@
   "framework": null,
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/out",
-  "installCommand": "cd frontend && npm install"
+  "installCommand": "cd frontend && npm install",
+  "rewrites": [
+    {
+      "source": "/bot-api/:path*",
+      "destination": "https://bot.ar-investech.uk/:path*"
+    }
+  ]
 }

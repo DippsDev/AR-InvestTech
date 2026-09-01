@@ -13,10 +13,14 @@ from __future__ import annotations
 import secrets
 from contextlib import asynccontextmanager
 
+import httpx
 import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
+from starlette.concurrency import run_in_threadpool
+from starlette.middleware.base import BaseHTTPMiddleware
 
 import config
 from bridge import BotBridge
@@ -29,6 +33,27 @@ _PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
 # Reachable without credentials ONLY while this machine has no activated
 # license. See _require_token for why that condition is load-bearing.
 _BOOTSTRAP_PATHS = {"/license/validate"}
+
+# Hop-by-hop + CORS headers must not be copied from a tenant response: the
+# gateway's CORSMiddleware is the one the browser should see, and httpx has
+# already decoded the body so Content-Encoding would lie.
+_STRIP_REQUEST_HEADERS = {
+    "host", "connection", "keep-alive", "proxy-authenticate",
+    "proxy-authorization", "te", "trailers", "transfer-encoding", "upgrade",
+    "content-length",
+}
+_STRIP_RESPONSE_HEADERS = _STRIP_REQUEST_HEADERS | {
+    "content-encoding",
+    "access-control-allow-origin",
+    "access-control-allow-credentials",
+    "access-control-allow-headers",
+    "access-control-allow-methods",
+    "access-control-expose-headers",
+    "access-control-max-age",
+}
+
+_gateway_http: httpx.AsyncClient | None = None
+bridge = BotBridge()
 
 
 def _require_token(request: Request, x_api_token: str | None = Header(default=None)) -> None:
@@ -73,12 +98,72 @@ def _require_token(request: Request, x_api_token: str | None = Header(default=No
     # Constant-time compare: a plain == leaks the secret's prefix through
     # response timing to anyone who can call this endpoint in a loop.
     if x_api_token:
-        if secrets.compare_digest(x_api_token, config.API_TOKEN):
+        if (len(x_api_token) == len(config.API_TOKEN)
+                and secrets.compare_digest(x_api_token, config.API_TOKEN)):
             return
-        if license_key and secrets.compare_digest(x_api_token, license_key):
+        if (license_key and len(x_api_token) == len(license_key)
+                and secrets.compare_digest(x_api_token, license_key)):
             return
 
     raise HTTPException(status_code=401, detail="Invalid or missing API token.")
+
+
+async def proxy_tenant_request(request: Request, target: str) -> Response:
+    """Forward the dashboard request to another customer's VPS."""
+    client = _gateway_http
+    if client is None:
+        return JSONResponse(
+            {"ok": False, "error": "Tenant gateway is not ready."},
+            status_code=503,
+        )
+    url = f"{target}{request.url.path}"
+    if request.url.query:
+        url = f"{url}?{request.url.query}"
+    headers = {
+        k: v for k, v in request.headers.items()
+        if k.lower() not in _STRIP_REQUEST_HEADERS
+    }
+    body = await request.body()
+    try:
+        upstream = await client.request(
+            request.method, url, content=body, headers=headers,
+        )
+    except httpx.RequestError:
+        return JSONResponse(
+            {"ok": False, "error": "That license's bot is unreachable."},
+            status_code=502,
+        )
+    out_headers = {
+        k: v for k, v in upstream.headers.items()
+        if k.lower() not in _STRIP_RESPONSE_HEADERS
+    }
+    return Response(
+        content=upstream.content,
+        status_code=upstream.status_code,
+        headers=out_headers,
+    )
+
+
+class TenantGatewayMiddleware(BaseHTTPMiddleware):
+    """Route a license key to its own VPS while the browser stays on one URL.
+
+    The public dashboard always talks to this origin. If the X-API-Token is a
+    license whose `backend_url` in Supabase points at another machine, the
+    request is proxied there (and that machine's auth/activation applies).
+    Keys with no backend_url — including this box's own license — are handled
+    locally as before.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        if request.url.path in _PUBLIC_PATHS:
+            return await call_next(request)
+        token = request.headers.get("x-api-token") or ""
+        if not token:
+            return await call_next(request)
+        target = await run_in_threadpool(bridge.remote_backend_url_for_token, token)
+        if not target:
+            return await call_next(request)
+        return await proxy_tenant_request(request, target)
 
 
 @asynccontextmanager
@@ -90,23 +175,33 @@ async def lifespan(app: FastAPI):
     press the buttons again — which defeats the point of hosting it off the
     laptop in the first place.
     """
+    global _gateway_http
+    _gateway_http = httpx.AsyncClient(
+        timeout=config.GATEWAY_TIMEOUT_S,
+        follow_redirects=False,
+    )
     bridge.resume_on_startup()
     try:
         yield
     finally:
         bridge.shutdown()
+        client = _gateway_http
+        _gateway_http = None
+        if client is not None:
+            await client.aclose()
 
 
 app = FastAPI(title="AR-InvestTech API", lifespan=lifespan, dependencies=[Depends(_require_token)])
 
+# Gateway inside CORS so a proxied tenant response still gets this origin's
+# Access-Control-* headers. Last add_middleware is outermost.
+app.add_middleware(TenantGatewayMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-bridge = BotBridge()
 
 
 # ── Health ─────────────────────────────────────────────────────────────

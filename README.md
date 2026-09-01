@@ -416,12 +416,14 @@ See [`deploy/README.md`](deploy/README.md) for the full Windows VPS runbook. The
 
 ## License Activation
 
-The app requires a license key in the format `ARB-XXXX-XXXX-XXXX`, validated against the Supabase activation server (`backend/supabase_client.py`):
+The app requires a license key in the format `MOJALEFA-XXXX`, validated against the Supabase activation server (`backend/supabase_client.py`):
 
-1. Open the dashboard at `http://localhost:3000`
+1. Open the dashboard at [https://www.ar-investech.uk/](https://www.ar-investech.uk/)
 2. Enter your license key on the Activation screen
 3. The key is validated remotely and stored locally
 4. On subsequent launches the key is read automatically
+
+Each license can point at its own VPS (`licenses.backend_url`). The public site stays the same; the gateway on the original VPS proxies that customer's key to their machine. See `backend/SUPABASE_SETUP.md` and `deploy/README.md`.
 
 ---
 
