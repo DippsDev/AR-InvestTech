@@ -35,6 +35,8 @@ _SYMBOL_LABELS = {
     "EURUSDm": "EURUSD — ECB vs Fed, Eurozone and US data",
     "GBPUSDm": "GBPUSD — BoE vs Fed, UK and US data",
     "US30m":   "US30 / Dow Jones Industrial Average — Fed, US macro, Dow-component earnings",
+    "ETHUSDm": "ETHUSD / Ethereum — crypto risk appetite, ETF flows, US regulation, BTC correlation",
+    "BTCUSDm": "BTCUSD / Bitcoin — crypto risk appetite, ETF flows, US regulation, dollar liquidity",
 }
 
 _CALL_SCHEMA = {

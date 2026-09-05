@@ -16,7 +16,7 @@ const DEFAULTS: S = {
   login: "", server: "", risk_pct: "1.0",
   daily_loss_limit_usd: "3.0", max_trades_per_day: "2", max_drawdown_pct: "50.0",
   aggressive: false, off_hours: false, news: true, password: "",
-  sb_symbols: [], tl_symbols: [],
+  sb_symbols: [], tl_symbols: [], mb_symbols: [],
 };
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
@@ -199,6 +199,11 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
                 <span style={{ fontWeight: 700, color: "var(--dash-accent-purple)" }}>Trendline</span>
                 {"  "}
                 {form.tl_symbols && form.tl_symbols.length > 0 ? form.tl_symbols.join(", ") : "—"}
+              </div>
+              <div style={{ fontSize: 12, color: "var(--dash-text)" }}>
+                <span style={{ fontWeight: 700, color: "var(--dash-accent-orange)" }}>Mutanabby</span>
+                {"  "}
+                {form.mb_symbols && form.mb_symbols.length > 0 ? form.mb_symbols.join(", ") : "—"}
               </div>
             </div>
           </div>

@@ -571,7 +571,7 @@ class BotBridge:
         equity  = account["equity"]  if account else 0.0
         profit  = account["profit"]  if account else 0.0
 
-        # Up to 6 concurrent instances (3 SB symbols + 3 TL symbols) can each
+        # Up to 5 concurrent instances (2 SB symbols + 3 TL symbols) can each
         # have a position open at once — report all of them, not just one.
         open_trades = []
         try:
@@ -712,10 +712,15 @@ class BotBridge:
             return empty
 
     def get_market_snapshot(self) -> list:
-        from multi_symbol_targets import SB_TARGETS, TL_TARGETS
-        # Unique symbols across both strategies' top-3 targets — a symbol
-        # traded by both (e.g. DE30m) gets one heatmap tile, not two.
-        symbols = list(dict.fromkeys(list(SB_TARGETS) + list(TL_TARGETS)))
+        import config as _cfg
+        from multi_symbol_targets import MB_TARGETS, SB_TARGETS, TL_TARGETS
+        # Unique symbols across the live books — a name traded by more than
+        # one strategy (same price) gets one heatmap tile, not two.
+        symbols = list(dict.fromkeys(
+            list(SB_TARGETS)
+            + list(TL_TARGETS)
+            + (list(MB_TARGETS) if getattr(_cfg, "MB_ENABLED", False) else [])
+        ))
         return [self._get_symbol_reading(sym, sym) for sym in symbols]
 
     def _get_account(self) -> Optional[dict]:
@@ -879,15 +884,16 @@ class BotBridge:
 
     def get_settings(self) -> dict:
         import config
-        from multi_symbol_targets import SB_TARGETS, TL_TARGETS
+        from multi_symbol_targets import MB_TARGETS, SB_TARGETS, TL_TARGETS
         return {
             "login":                str(config.MT5_LOGIN),
             "server":               config.MT5_SERVER,
             # Read-only: trading symbols come from multi_symbol_targets.py
-            # (top-3 per strategy by backtested profit factor), not a single
+            # (live SB / TL / MB lists), not a single
             # user-editable field — there's no one "the symbol" anymore.
             "sb_symbols":           list(SB_TARGETS),
             "tl_symbols":           list(TL_TARGETS),
+            "mb_symbols":           list(MB_TARGETS) if getattr(config, "MB_ENABLED", False) else [],
             "risk_pct":             str(config.SB_RISK_PCT),
             "daily_loss_limit_usd": str(config.SB_DAILY_LOSS_LIMIT_USD),
             "max_trades_per_day":   str(config.SB_MAX_TRADES_PER_DAY),

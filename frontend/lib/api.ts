@@ -68,12 +68,12 @@ export interface Stats {
   open_trades: string;
   daily_cap_used: string;
   next_refresh: string;
-  // Every currently-open position across all 6 concurrent SB/TL instances
+  // Every currently-open position across all concurrent SB/TL instances
   // (not just one) — see multi_symbol_targets.py on the backend.
   open_positions?: OpenPosition[];
   // One entry per (strategy, symbol) instance the bot is configured to
   // trade — replaces the old single symbol/price fields now that Silver
-  // Bullet and Trendline each run across their own top-3 symbols.
+  // Bullet and Trendline each run across their own live symbol lists.
   active_symbols?: ActiveSymbol[];
   // Extras surfaced from backend config so the UI never lies about settings.
   risk_pct?: string;
@@ -123,10 +123,11 @@ export interface Settings {
   // Write-only: never populated from the backend. Blank means "don't change".
   password?: string;
   // Read-only: trading symbols come from the backend's multi_symbol_targets
-  // config (top-3 per strategy by backtested profit factor), not a
-  // user-editable field — never sent back on save.
+  // config (live SB / TL lists), not a user-editable field — never sent
+  // back on save.
   sb_symbols?: string[];
   tl_symbols?: string[];
+  mb_symbols?: string[];
 }
 
 export const apiClient = {

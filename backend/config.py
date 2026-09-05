@@ -96,7 +96,7 @@ NEWS_ANALYST_FILTER  = os.getenv("NEWS_ANALYST_FILTER", "true").lower() == "true
 # Display-only ticker the dashboard used to pin; live trading symbols come
 # from SB_TARGETS / TL_TARGETS / MB_TARGETS in multi_symbol_targets.py.
 # Set SB_SYMBOL in .env only if some leftover UI path still needs a fallback.
-SB_SYMBOL = os.getenv("SB_SYMBOL", "DE30m")
+SB_SYMBOL = os.getenv("SB_SYMBOL", "USTECm")
 
 # Optional extra read-only market reading on the dashboard — not traded.
 # Set SB_GOLD_SYMBOL in .env if your broker uses a different gold name.

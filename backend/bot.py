@@ -77,8 +77,8 @@ class SilverBulletBot:
         #
         # Mutanabby is deliberately EXCLUDED from this divisor and gets its own
         # (below). Including it would silently shrink every SB and TL position:
-        # with 3 SB + 3 TL the divisor is 6, and adding 3 MB instances would
-        # push it to 9, cutting SB/TL per-instance risk by a third. MB's
+        # with 2 SB + 3 TL the divisor is 5, and adding 3 MB instances would
+        # push it to 8, cutting SB/TL per-instance risk. MB's
         # evidence is much weaker than theirs (see mutanabby/README.md), so it
         # funds itself out of MB_RISK_PCT rather than out of their budget.
         # Enabling MB therefore ADDS at most MB_RISK_PCT of account risk — keep
@@ -87,7 +87,7 @@ class SilverBulletBot:
         self._instance_count = max(1, total_instances)
         self._mb_instance_count = max(1, len(MB_TARGETS)) if self.mb_enabled else 1
 
-        # symbol -> adapter, one instance per top-3 target (see
+        # symbol -> adapter, one instance per live target (see
         # multi_symbol_targets.py). Each gets its own volatility-scaled
         # thresholds and its own share of the strategy's risk budget.
         self.sb_adapters: dict[str, SilverBulletLiveAdapter] = {}
