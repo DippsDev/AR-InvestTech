@@ -47,7 +47,7 @@ class TestLocalOnlyMode:
 
 
 class TestPublicPaths:
-    @pytest.mark.parametrize("path", ["/health", "/docs", "/openapi.json", "/redoc"])
+    @pytest.mark.parametrize("path", ["/health", "/docs", "/openapi.json", "/redoc", "/purchase/request"])
     def test_always_reachable_without_credentials(self, path):
         # The supervisor and tunnel health check need these before they have
         # any credential.

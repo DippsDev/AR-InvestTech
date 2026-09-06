@@ -199,7 +199,7 @@ class BotBridge:
         if not result.get("ok"):
             self._add_log("[MT5]", "warn", f"Startup connect failed: {result.get('error', 'unknown')}", speaker="Boss")
 
-        if self._desired_running:
+        if result.get("ok") and self._desired_running:
             self._add_log("[START]", "sig", "Resuming bot — run state was active before restart", speaker="Boss")
             try:
                 self._start_bot()
@@ -270,7 +270,14 @@ class BotBridge:
                     self.connect_mt5()  # in place: never restart a live bot
                 return
 
-            # Desired running, but the thread is gone.
+            # Desired running, but the thread is gone. Do not spin a new
+            # bot until MT5 answers — initialize() failure exits immediately
+            # and the next supervisor tick would just repeat the same crash.
+            if not healthy:
+                self.connect_mt5()
+                if not self._mt5_ok:
+                    return
+
             now = time.time()
             if now < self._next_restart_at:
                 return

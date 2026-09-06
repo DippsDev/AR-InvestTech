@@ -156,18 +156,7 @@ export default function Dashboard(props: Props) {
             }}
           >
             {/* Top row: bot status + account + open trade */}
-            <div
-              style={{
-                display: "grid",
-                // min(280px, 100%) instead of a bare 280px: a plain minmax
-                // floor still forces a 280px-wide track even when the
-                // container itself is narrower (e.g. a phone screen minus
-                // padding), which is real overflow, not just a visual
-                // clip — min() lets the track actually shrink to fit.
-                gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
-                gap: 14,
-              }}
-            >
+            <div className="dash-top-row">
               <TopStoryCard stats={stats} />
               <BookCard book={accountBook} />
               <OpenTradeCard stats={stats} />
@@ -207,7 +196,7 @@ export default function Dashboard(props: Props) {
                   to match the taller persona cards; MarketHeatmap fills that
                   stretched height itself so the tiles reach all the way down
                   instead of leaving bare background below them. */}
-              <div style={{ flex: "3 1 320px", minWidth: 0, display: "flex" }}>
+              <div className="dash-heatmap-wrap" style={{ flex: "3 1 320px", minWidth: 0, display: "flex" }}>
                 <MarketHeatmap readings={props.marketReadings} />
               </div>
             </div>

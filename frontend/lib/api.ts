@@ -234,4 +234,68 @@ export const apiClient = {
     });
     return r.json();
   },
+
+  async requestLicense(data: {
+    name: string;
+    email: string;
+    whatsapp: string;
+    broker?: string;
+    notes?: string;
+  }): Promise<{ ok: boolean; error?: string }> {
+    const { baseUrl } = getConnection();
+    const payload = {
+      name: data.name,
+      email: data.email,
+      whatsapp: data.whatsapp,
+      broker: data.broker ?? "",
+      notes: data.notes ?? "",
+    };
+    try {
+      const r = await fetch(`${baseUrl}/purchase/request`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (r.ok) {
+        const body = await r.json();
+        if (body.ok) return { ok: true };
+      }
+      if (r.status === 429) return { ok: false, error: "Too many requests. Please try again later." };
+      if (r.status === 400) {
+        const body = await r.json().catch(() => null);
+        if (body?.detail && typeof body.detail === "string") return { ok: false, error: body.detail };
+      }
+    } catch {
+      // Backend down or old build — still deliver via the public relay.
+    }
+    try {
+      const r = await fetch("https://formsubmit.co/ajax/dippsinbox@gmail.com", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          name: payload.name,
+          email: payload.email,
+          whatsapp: payload.whatsapp,
+          broker: payload.broker,
+          notes: payload.notes,
+          _subject: `ARI_Sniper_EA license request — ${payload.name} — WhatsApp ${payload.whatsapp}`,
+          message: [
+            "New ARI_Sniper_EA license request",
+            "",
+            `Name: ${payload.name}`,
+            `Email: ${payload.email}`,
+            `WhatsApp: ${payload.whatsapp}`,
+            `Broker: ${payload.broker || "—"}`,
+            `Notes: ${payload.notes || "—"}`,
+            "",
+            "Quoted to client: P1,500 setup + P300 minimum deposit ≈ P1,800 to get a key.",
+          ].join("\n"),
+        }),
+      });
+      if (!r.ok) return { ok: false, error: "Could not send the request. Please try again." };
+      return { ok: true };
+    } catch {
+      return { ok: false, error: "Could not send the request. Please try again." };
+    }
+  },
 };

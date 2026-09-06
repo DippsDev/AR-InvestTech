@@ -95,7 +95,7 @@ export default function BookCard({ book }: Props) {
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
         <span style={{ fontSize: 28, fontWeight: 800, color: "var(--dash-text)" }}>
           ${book.value.toLocaleString()}
         </span>

@@ -291,3 +291,16 @@ DAILY_TRADE_FLOOR_TIME_ET = os.getenv("DAILY_TRADE_FLOOR_TIME_ET", "14:00")
 # otherwise resolve against whatever cwd the process happened to start in.
 LOG_FILE  = str(paths.log_dir() / "trades.log")
 LOG_LEVEL = "INFO"
+
+# Purchase-page notifications. Always delivered to this inbox; SMTP is used
+# when configured, otherwise the public FormSubmit relay is the fallback so
+# a license request still arrives without a Gmail app password.
+PURCHASE_NOTIFY_EMAIL = os.getenv("PURCHASE_NOTIFY_EMAIL", "dippsinbox@gmail.com").strip()
+SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
+try:
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+except ValueError:
+    SMTP_PORT = 587
+SMTP_USER = os.getenv("SMTP_USER", "").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+SMTP_FROM = os.getenv("SMTP_FROM", "").strip() or SMTP_USER

@@ -219,13 +219,57 @@ body {
   overflow: auto;
 }
 
+.purchase-screen {
+  height: 100vh;
+  height: 100dvh;
+  overflow: auto;
+  background: var(--dash-bg);
+  color: var(--dash-text);
+}
+.purchase-wrap {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 28px 20px 48px;
+}
+.purchase-features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.purchase-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+.purchase-pricing {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+@media (max-width: 768px) {
+  .purchase-wrap { padding: 16px 14px 36px; }
+  .purchase-features,
+  .purchase-body,
+  .purchase-pricing { grid-template-columns: 1fr; }
+}
 @media (max-width: 900px) {
+  .purchase-steps { flex-direction: column; }
+}
+
+/* 1200px covers iPad Pro 11"/13" portrait and 11" landscape
+   (834 / 1024 / 1194) so those viewports get a scrolling single-column
+   dashboard instead of a squeezed desktop sidebar. 13" landscape stays above. */
+@media (max-width: 1200px) {
   .dashboard-root {
     height: auto;
     max-width: 100vw;
     overflow-x: hidden;
   }
-  .settings-screen {
+  .settings-screen,
+  .purchase-screen {
     height: auto;
     min-height: 100vh;
     min-height: 100dvh;
@@ -381,7 +425,7 @@ html, body {
 }
 
 /* ── Table / mobile cards ────────────────────────── */
-/* These base rules MUST stay above the ≤900px block below. Media queries add
+/* These base rules MUST stay above the mobile block below. Media queries add
    no specificity, so a later `.trade-cards { display: none }` would beat the
    `display: flex` override inside the media query and hide both the desktop
    table and the mobile cards, leaving an empty Trade History card on phones. */
@@ -389,8 +433,40 @@ html, body {
 .tbl-row     { min-width: 600px; }
 .trade-cards { display: none; }
 
-/* ── Dashboard mobile layout ─────────────────────── */
-@media (max-width: 900px) {
+/* Top row: bot status / account / open trades. min(280px, 100%) instead of
+   a bare 280px: a plain minmax floor still forces a 280px-wide track even
+   when the container itself is narrower (e.g. a phone screen minus padding),
+   which is real overflow — min() lets the track actually shrink to fit. */
+.dash-top-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: 14px;
+}
+
+/* Open positions wrap into a row. flex-grow fills leftover space on the
+   last row so a single leftover tile doesn't sit in a sliver with empty
+   space to its right. */
+.open-trades-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.open-trade-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1 1 176px;
+  padding: 10px;
+  background: var(--dash-card-bg-2);
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+}
+
+/* ── Dashboard tablet + mobile layout ────────────── */
+/* 1200px includes iPad Pro portrait + 11" landscape. Keep the trade-table
+   → card swap at 900px so iPads still get a real table. */
+@media (max-width: 1200px) {
   /* The unconditional `html, body { overflow: hidden }` above only gets
      overflow-y patched back to auto on `body` elsewhere in this file — html
      itself is left at overflow-y:hidden. Since body's height is auto (sized
@@ -504,17 +580,21 @@ html, body {
   .dash-chat-col {
     width: 100% !important;
     flex: 0 0 auto !important;
-    max-height: 420px !important;
+    max-height: 520px !important;
     padding: 0 14px 14px !important;
   }
 
-  /* Trades: hide wide desktop table and show mobile cards at the same
-     breakpoint the dashboard switches to mobile layout (≤900px). Keeping the
-     old 768px breakpoint left the 600px-wide table visible in the mobile
-     column layout, which created a horizontal scrollbar. */
-  .tbl-wrap    { display: none; }
-  .trade-cards { display: flex; flex-direction: column; gap: 8px; }
-  .tbl-row     { min-width: 0; }
+  /* When positions exist, give OPEN TRADES the full row so tiles sit
+     side-by-side instead of stacking in a third-column sliver. */
+  .open-trades-card--populated {
+    grid-column: 1 / -1;
+  }
+
+  /* Heatmap on its own row so five tiles share one even strip instead of
+     wrapping a leftover sliver next to the last persona card. */
+  .dash-heatmap-wrap {
+    flex: 1 1 100% !important;
+  }
 
   /* Cards like trade history use .dark-scroll for vertical scrolling; make sure
      they never advertise a horizontal scrollbar on phones. */
@@ -522,6 +602,14 @@ html, body {
     overflow-x: hidden !important;
     touch-action: pan-y;
   }
+}
+
+@media (max-width: 900px) {
+  /* Trades: hide the wide desktop table and show stacked cards. Kept at
+     900px (not 1200) so iPad still gets a real table. */
+  .tbl-wrap    { display: none; }
+  .trade-cards { display: flex; flex-direction: column; gap: 8px; }
+  .tbl-row     { min-width: 0; }
 }
 
 @media (max-width: 640px) {
@@ -558,7 +646,7 @@ html, body {
 .grid-perf { display: grid; grid-template-columns: 1.6fr 1fr;      gap: 12px; }
 
 /* ── Activation screen / card ────────────────────── */
-/* The ≤900px block above drops .full-viewport to height:auto so the dashboard
+/* The ≤1200px block above drops .full-viewport to height:auto so the dashboard
    can scroll as one long page. A percentage height only resolves against a
    parent with a definite height, so this screen's previous height:100% silently
    became auto on mobile — the card wrapper's flex:1 then had no free space to
