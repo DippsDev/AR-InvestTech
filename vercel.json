@@ -3,6 +3,7 @@
   "buildCommand": "cd frontend && npm run build",
   "outputDirectory": "frontend/out",
   "installCommand": "cd frontend && npm install",
+  "cleanUrls": true,
   "rewrites": [
     {
       "source": "/bot-api/:path*",
