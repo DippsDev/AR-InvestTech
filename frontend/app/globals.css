@@ -433,6 +433,64 @@ html, body {
 .tbl-row     { min-width: 600px; }
 .trade-cards { display: none; }
 
+.history-group-card {
+  background: var(--dash-card-bg-2);
+  border: 1px solid var(--dash-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+}
+.history-group-hit {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+}
+.history-group-chevron {
+  font-size: 12px;
+  color: var(--dash-text-muted);
+  display: inline-block;
+  flex-shrink: 0;
+  transition: transform 0.15s ease;
+  line-height: 1;
+}
+.history-group-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--dash-text-muted);
+  background: var(--dash-card-bg);
+  border: 1px solid var(--dash-border);
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.history-group-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--dash-border);
+  font-size: 11px;
+  color: var(--dash-text-sub);
+  flex-wrap: wrap;
+}
+.history-group-legs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.history-group-summary {
+  display: none;
+}
+
 /* Top row: bot status / account / open trades. min(280px, 100%) instead of
    a bare 280px: a plain minmax floor still forces a 280px-wide track even
    when the container itself is narrower (e.g. a phone screen minus padding),
@@ -670,6 +728,7 @@ html, body {
   .tbl-wrap    { display: none; }
   .trade-cards { display: flex; flex-direction: column; gap: 8px; }
   .tbl-row     { min-width: 0; }
+  .history-group-summary { display: inline; }
 
   /* Heatmap on its own row so five tiles share one even strip instead of
      wrapping a leftover sliver next to the last persona card. */
