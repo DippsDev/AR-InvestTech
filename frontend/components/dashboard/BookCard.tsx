@@ -52,6 +52,7 @@ export default function BookCard({ book }: Props) {
         display: "flex",
         flexDirection: "column",
         gap: 10,
+        height: "100%",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 6 }}>

@@ -28,6 +28,11 @@ export default function PersonaCard({ persona, badge, note, time, active }: Prop
         gap: 10,
         textAlign: "center",
         minWidth: 0,
+        // Fill the stretched flex/grid cell so shorter notes don't leave
+        // bare dashboard background beside taller siblings on the same row.
+        height: "100%",
+        width: "100%",
+        boxSizing: "border-box",
       }}
     >
       <div className="persona-avatar-box">
@@ -59,6 +64,10 @@ export default function PersonaCard({ persona, badge, note, time, active }: Prop
       <div
         style={{
           width: "100%",
+          marginTop: "auto",
+          flex: 1,
+          display: "flex",
+          flexDirection: "column",
           background: "var(--dash-card-bg-2)",
           border: "1px solid var(--dash-border)",
           borderRadius: 6,

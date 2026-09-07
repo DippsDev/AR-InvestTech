@@ -32,7 +32,7 @@ export default function TradeHistoryTable({ trades }: Props) {
 
       <div className="dark-scroll" style={{ flex: 1, minHeight: 0, overflowY: "auto", overflowX: "auto" }}>
         {trades.length === 0 ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1, minHeight: 120 }}>
             <span style={{ fontSize: 12, color: "var(--dash-text-dim)" }}>No closed trades in the last 30 days.</span>
           </div>
         ) : (

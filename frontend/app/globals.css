@@ -508,6 +508,14 @@ html, body {
     padding: 0 14px 14px !important;
   }
 
+  /* Desktop keeps a 320px floor so Trade History absorbs leftover viewport
+     height. On mobile the page scrolls as one column, so that floor just
+     becomes a tall empty panel under a short trade list — size to content. */
+  .dash-trade-history {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+  }
+
   /* Trades: hide wide desktop table and show mobile cards at the same
      breakpoint the dashboard switches to mobile layout (≤900px). Keeping the
      old 768px breakpoint left the 600px-wide table visible in the mobile

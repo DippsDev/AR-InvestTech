@@ -43,7 +43,9 @@ export default function MarketHeatmap({ readings }: Props) {
         overflow: "hidden",
         width: "100%",
         flex: 1,
+        minHeight: 0,
         alignContent: "stretch",
+        alignItems: "stretch",
       }}
     >
       {source.map(r => (
@@ -52,6 +54,7 @@ export default function MarketHeatmap({ readings }: Props) {
           style={{
             flex: "1 1 110px",
             minWidth: 90,
+            minHeight: 72,
             display: "flex",
             flexDirection: "column",
             alignItems: "center",

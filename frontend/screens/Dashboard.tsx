@@ -157,6 +157,7 @@ export default function Dashboard(props: Props) {
           >
             {/* Top row: bot status + account + open trade */}
             <div
+              className="dash-top-row"
               style={{
                 display: "grid",
                 // min(280px, 100%) instead of a bare 280px: a plain minmax
@@ -166,6 +167,7 @@ export default function Dashboard(props: Props) {
                 // clip — min() lets the track actually shrink to fit.
                 gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))",
                 gap: 14,
+                alignItems: "stretch",
               }}
             >
               <TopStoryCard stats={stats} />
@@ -180,9 +182,11 @@ export default function Dashboard(props: Props) {
                 items sharing a wrapped line distribute growth among
                 themselves automatically, whatever that count turns out to be. */}
             <div
+              className="dash-office-row"
               style={{
                 display: "flex",
                 flexWrap: "wrap",
+                alignItems: "stretch",
                 gap: 10,
               }}
             >
@@ -190,7 +194,10 @@ export default function Dashboard(props: Props) {
                 const persona = PERSONAS[name];
                 const note = latestNote(log, name, persona.idleNote);
                 return (
-                  <div key={name} style={{ flex: "1 1 200px", minWidth: 0 }}>
+                  <div
+                    key={name}
+                    style={{ flex: "1 1 200px", minWidth: 0, display: "flex" }}
+                  >
                     <PersonaCard
                       persona={persona}
                       badge={personaData[name]?.badge}
@@ -219,8 +226,13 @@ export default function Dashboard(props: Props) {
                 comment below), which leaves height:100% with no definite
                 reference to resolve against and the card collapses to its
                 content, stranding blank space up to this wrapper's
-                minHeight. flex:1/minHeight:0 sidesteps that entirely. */}
-            <div style={{ flex: 1, minHeight: 320, display: "flex", flexDirection: "column" }}>
+                minHeight. flex:1/minHeight:0 sidesteps that entirely.
+                On mobile the minHeight is dropped (see globals.css) so a
+                short trade list doesn't force a tall empty panel. */}
+            <div
+              className="dash-trade-history"
+              style={{ flex: 1, minHeight: 320, display: "flex", flexDirection: "column" }}
+            >
               <TradeHistoryTable trades={props.trades} />
             </div>
           </div>
