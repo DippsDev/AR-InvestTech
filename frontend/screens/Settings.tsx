@@ -19,19 +19,26 @@ const DEFAULTS: S = {
   sb_symbols: [], tl_symbols: [], mb_symbols: [],
 };
 
-function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+function Toggle({ on, disabled }: { on: boolean; disabled?: boolean }) {
   return (
-    <div onClick={onToggle} style={{
-      width: 38, height: 22, borderRadius: 11,
-      background: on ? "#22C55E" : "var(--dash-border-light)",
-      position: "relative", cursor: "pointer",
-      transition: "background .18s", flexShrink: 0,
-    }}>
+    <div
+      aria-disabled={disabled || undefined}
+      style={{
+        width: 38, height: 22, borderRadius: 11,
+        background: disabled
+          ? "var(--dash-border)"
+          : on ? "#22C55E" : "var(--dash-border-light)",
+        position: "relative",
+        cursor: disabled ? "not-allowed" : "pointer",
+        transition: "background .18s", flexShrink: 0,
+        opacity: disabled ? 0.55 : 1,
+      }}
+    >
       <div style={{
         position: "absolute", top: 2,
-        left: on ? 18 : 2, width: 18, height: 18,
-        borderRadius: "50%", background: "#FFFFFF",
-        transition: "left .18s", boxShadow: "0 1px 2px rgba(0,0,0,.35)",
+        left: on && !disabled ? 18 : 2, width: 18, height: 18,
+        borderRadius: "50%", background: disabled ? "var(--dash-text-dim)" : "#FFFFFF",
+        transition: "left .18s", boxShadow: disabled ? "none" : "0 1px 2px rgba(0,0,0,.35)",
       }} />
     </div>
   );
@@ -127,16 +134,19 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
     </div>
   );
 
-  const tog = (k: "aggressive" | "off_hours" | "news", label: string, sub: string, last = false) => (
+  const tog = (k: "aggressive" | "off_hours" | "news", label: string, last = false) => (
     <div style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
       padding: "12px 0", borderBottom: last ? "none" : "1px solid var(--dash-border)",
+      opacity: 0.72,
     }}>
       <div>
-        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--dash-text)" }}>{label}</div>
-        <div style={{ fontSize: 11, color: "var(--dash-text-dim)", marginTop: 2 }}>{sub}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "var(--dash-text-muted)" }}>{label}</div>
+        <div style={{ fontSize: 11, color: "var(--dash-text-dim)", marginTop: 2, fontStyle: "italic" }}>
+          Under maintenance
+        </div>
       </div>
-      <Toggle on={form[k] as boolean} onToggle={() => set(k, !form[k])} />
+      <Toggle on={form[k] as boolean} disabled />
     </div>
   );
 
@@ -216,25 +226,25 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
         <div className="grid-3" style={{ padding: 16 }}>
           {fld("risk_pct",             "Risk per Trade (%)")}
           {fld("daily_loss_limit_usd", "Daily Loss Limit ($)")}
-          {fld("max_trades_per_day",   "Max Trades / Day")}
+          {fld("max_trades_per_day",   "Max Trades / Day (SB + TL + MB)")}
           {fld("max_drawdown_pct",     "Max Drawdown (%)")}
         </div>
       </div>
 
-      {/* Strategy Toggles */}
+      {/* Strategy Toggles — locked for now; keep current server values. */}
       <div style={cardStyle}>
         <SectionHeader label="Strategy Toggles" color="var(--dash-accent-purple)" />
         <div style={{ padding: "6px 16px" }}>
-          {tog("aggressive", "Aggressive Mode",   "2–3 trades/day: lower filters + London session + wider stops · restart bot to apply")}
-          {tog("off_hours",  "Off-Hours Trading", "Trade outside session windows · max 3 fills/day · closes 23:00–00:00 BWT · restart bot to apply")}
-          {tog("news",       "Skip News Days",    "Pause all entries on NFP/FOMC/CPI/GDP release days · restart bot to apply", true)}
+          {tog("aggressive", "Aggressive Mode")}
+          {tog("off_hours",  "Off-Hours Trading")}
+          {tog("news",       "Skip News Days", true)}
         </div>
         <div style={{
           display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10,
           padding: "12px 16px", borderTop: "1px solid var(--dash-border)",
         }}>
           <div style={{ fontSize: 11, color: "var(--dash-text-dim)" }}>
-            Save toggle changes above first, then restart to apply them — the bot only reads settings on startup.
+            Strategy toggles are under maintenance and cannot be changed right now.
             {" "}Bot is currently <strong style={{ color: running ? "#22C55E" : "var(--dash-text-muted)" }}>{running ? "running" : "stopped"}</strong>.
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
