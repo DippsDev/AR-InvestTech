@@ -7,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function PurchasePage() {
-  return <Purchase />;
+  return (
+    <div className="full-viewport">
+      <Purchase />
+    </div>
+  );
 }
