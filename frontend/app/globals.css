@@ -486,6 +486,9 @@ html, body {
   flex-direction: column;
   gap: 6px;
   margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .history-group-summary {
   display: none;
@@ -499,7 +502,9 @@ html, body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 14px;
-  align-items: stretch;
+  /* start — not stretch — so expanding Open Trades legs doesn't pull
+     Bot Status / Account taller to match the open dropdown. */
+  align-items: start;
 }
 
 /* Compact grouped list in the third top-row column. align-self:start so
@@ -568,8 +573,11 @@ html, body {
   gap: 6px;
   margin-top: 10px;
   padding-left: 16px;
-  max-height: 220px;
+  /* Cap growth so expanding lots stays inside this card's scroll region
+     instead of lengthening the top-row layout. */
+  max-height: 180px;
   overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .open-trade-leg {
   display: flex;
@@ -741,7 +749,7 @@ html, body {
     min-height: 44px;
   }
   .open-trade-legs {
-    max-height: 200px;
+    max-height: 160px;
   }
 
   /* Cards like trade history use .dark-scroll for vertical scrolling; make sure
