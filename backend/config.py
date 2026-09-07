@@ -177,39 +177,39 @@ TL_SYMBOL  = os.getenv("TL_SYMBOL", "DE30m")
 TL_ENABLED = os.getenv("TL_ENABLED", "false").lower() == "true"
 
 try:
-    TL_RISK_PCT = float(os.getenv("TL_RISK_PCT", "1.0"))
+    TL_RISK_PCT = float(os.getenv("TL_RISK_PCT", os.getenv("SB_RISK_PCT", "1.0")))
 except ValueError:
     TL_RISK_PCT = 1.0
 
 try:
-    TL_MIN_BALANCE = float(os.getenv("TL_MIN_BALANCE", "15.0"))
+    TL_MIN_BALANCE = float(os.getenv("TL_MIN_BALANCE", os.getenv("SB_MIN_BALANCE", "15.0")))
 except ValueError:
     TL_MIN_BALANCE = 15.0
 
 try:
-    TL_MAX_RISK_USD = float(os.getenv("TL_MAX_RISK_USD", "1.0"))
+    TL_MAX_RISK_USD = float(os.getenv("TL_MAX_RISK_USD", os.getenv("SB_MAX_RISK_USD", "1.0")))
 except ValueError:
     TL_MAX_RISK_USD = 1.0
 
 try:
-    TL_SMALL_ACCT_THRESHOLD = float(os.getenv("TL_SMALL_ACCT_THRESHOLD", "150.0"))
+    TL_SMALL_ACCT_THRESHOLD = float(os.getenv("TL_SMALL_ACCT_THRESHOLD", os.getenv("SB_SMALL_ACCT_THRESHOLD", "150.0")))
 except ValueError:
     TL_SMALL_ACCT_THRESHOLD = 150.0
 
 try:
-    TL_MAX_DRAWDOWN_PCT = float(os.getenv("TL_MAX_DRAWDOWN_PCT", "50.0"))
+    TL_MAX_DRAWDOWN_PCT = float(os.getenv("TL_MAX_DRAWDOWN_PCT", os.getenv("SB_MAX_DRAWDOWN_PCT", "50.0")))
 except ValueError:
     TL_MAX_DRAWDOWN_PCT = 50.0
 
 try:
-    TL_DAILY_LOSS_LIMIT_USD = float(os.getenv("TL_DAILY_LOSS_LIMIT_USD", "10.0"))
+    TL_DAILY_LOSS_LIMIT_USD = float(os.getenv("TL_DAILY_LOSS_LIMIT_USD", os.getenv("SB_DAILY_LOSS_LIMIT_USD", "10.0")))
 except ValueError:
     TL_DAILY_LOSS_LIMIT_USD = 10.0
 
 try:
-    TL_MAX_TRADES_PER_DAY = int(os.getenv("TL_MAX_TRADES_PER_DAY", "3"))
+    TL_MAX_TRADES_PER_DAY = int(os.getenv("TL_MAX_TRADES_PER_DAY", os.getenv("SB_MAX_TRADES_PER_DAY", "5")))
 except ValueError:
-    TL_MAX_TRADES_PER_DAY = 3
+    TL_MAX_TRADES_PER_DAY = 5
 
 TL_NEWS = os.getenv("TL_NEWS", "true").lower() == "true"
 
@@ -237,41 +237,41 @@ MB_SYMBOL  = os.getenv("MB_SYMBOL", "US30m")
 MB_ENABLED = os.getenv("MB_ENABLED", "false").lower() == "true"
 
 try:
-    MB_RISK_PCT = float(os.getenv("MB_RISK_PCT", "0.25"))
+    MB_RISK_PCT = float(os.getenv("MB_RISK_PCT", os.getenv("SB_RISK_PCT", "1.0")))
 except ValueError:
-    MB_RISK_PCT = 0.25
+    MB_RISK_PCT = 1.0
 
 try:
-    MB_MIN_BALANCE = float(os.getenv("MB_MIN_BALANCE", "15.0"))
+    MB_MIN_BALANCE = float(os.getenv("MB_MIN_BALANCE", os.getenv("SB_MIN_BALANCE", "15.0")))
 except ValueError:
     MB_MIN_BALANCE = 15.0
 
 try:
-    MB_MAX_RISK_USD = float(os.getenv("MB_MAX_RISK_USD", "1.0"))
+    MB_MAX_RISK_USD = float(os.getenv("MB_MAX_RISK_USD", os.getenv("SB_MAX_RISK_USD", "1.0")))
 except ValueError:
     MB_MAX_RISK_USD = 1.0
 
 try:
-    MB_SMALL_ACCT_THRESHOLD = float(os.getenv("MB_SMALL_ACCT_THRESHOLD", "150.0"))
+    MB_SMALL_ACCT_THRESHOLD = float(os.getenv("MB_SMALL_ACCT_THRESHOLD", os.getenv("SB_SMALL_ACCT_THRESHOLD", "150.0")))
 except ValueError:
     MB_SMALL_ACCT_THRESHOLD = 150.0
 
 try:
-    MB_MAX_DRAWDOWN_PCT = float(os.getenv("MB_MAX_DRAWDOWN_PCT", "50.0"))
+    MB_MAX_DRAWDOWN_PCT = float(os.getenv("MB_MAX_DRAWDOWN_PCT", os.getenv("SB_MAX_DRAWDOWN_PCT", "50.0")))
 except ValueError:
     MB_MAX_DRAWDOWN_PCT = 50.0
 
 try:
-    MB_DAILY_LOSS_LIMIT_USD = float(os.getenv("MB_DAILY_LOSS_LIMIT_USD", "10.0"))
+    MB_DAILY_LOSS_LIMIT_USD = float(os.getenv("MB_DAILY_LOSS_LIMIT_USD", os.getenv("SB_DAILY_LOSS_LIMIT_USD", "10.0")))
 except ValueError:
     MB_DAILY_LOSS_LIMIT_USD = 10.0
 
 # H1 signals arrive roughly once a day per instrument, so this cap is a
 # safety valve against a runaway loop rather than a routine throttle.
 try:
-    MB_MAX_TRADES_PER_DAY = int(os.getenv("MB_MAX_TRADES_PER_DAY", "3"))
+    MB_MAX_TRADES_PER_DAY = int(os.getenv("MB_MAX_TRADES_PER_DAY", os.getenv("SB_MAX_TRADES_PER_DAY", "5")))
 except ValueError:
-    MB_MAX_TRADES_PER_DAY = 3
+    MB_MAX_TRADES_PER_DAY = 5
 
 MB_NEWS = os.getenv("MB_NEWS", "true").lower() == "true"
 

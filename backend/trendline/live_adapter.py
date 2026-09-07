@@ -36,9 +36,9 @@ import pandas as pd
 
 import config as root_config
 
-from src import mt5_cache
+from src import daily_limits, mt5_cache
 from src.split_target import split_lots
-from src.ticket_store import load_tickets, record_ticket
+from src.ticket_store import record_ticket
 
 from .config import TrendlineConfig
 from .strategy import Signal, SignalGenerator
@@ -64,15 +64,15 @@ class TrendlineLiveAdapter:
     _BAR_PERIOD_SEC = 3600
 
     def __init__(self, cfg: TrendlineConfig, symbol: Optional[str] = None,
-                 risk_pct_override: Optional[float] = None):
+                 risk_pct_override: Optional[float] = None,
+                 risk_divisor: int = 1):
         self._cfg = cfg
         self._generator = SignalGenerator(cfg)
         self._symbol: Optional[str] = symbol
-        # When multiple instances of this strategy run concurrently on
-        # different symbols, each is given a fraction of TL_RISK_PCT
-        # (see bot.py) so total account risk stays comparable to a single
-        # instance. None means "use TL_RISK_PCT directly".
+        # risk_divisor splits Settings SB_RISK_PCT across concurrent SB+TL
+        # instances. risk_pct_override remains for tests / absolute shares.
         self._risk_pct_override: Optional[float] = risk_pct_override
+        self._risk_divisor: int = max(1, int(risk_divisor))
         self._last_bar_time: Optional[pd.Timestamp] = None
         # Bar-period boundary this adapter last ran a full scan at, so an
         # idle adapter fetches bars once per H1 bar, not once per loop tick.
@@ -92,6 +92,8 @@ class TrendlineLiveAdapter:
         self._daily_loss_usd: float = 0.0
         self._daily_trades: int = 0
         self._daily_limit_halted: bool = False
+        # In-process floor so a history under-count cannot hide fills we just made.
+        self._session_entries_today: int = 0
         # Broker/trade-server clock offset from true UTC, remeasured each
         # cycle — see src/broker_time.py.
         self._broker_utc_offset: timedelta = timedelta(0)
@@ -548,7 +550,14 @@ class TrendlineLiveAdapter:
             legs = [(lots, clamp_tp(signal.target_price))]
 
         placed = 0
+        max_trades = int(getattr(root_config, "SB_MAX_TRADES_PER_DAY", 5))
         for leg_no, (leg_lots, tp) in enumerate(legs, start=1):
+            if self._daily_trades >= max_trades:
+                logger.info(
+                    f"[TL] Skipping remaining leg(s) | daily cap "
+                    f"{self._daily_trades}/{max_trades} already reached"
+                )
+                break
             result = mt5.order_send({
                 "action":       mt5.TRADE_ACTION_DEAL,
                 "symbol":       symbol,
@@ -576,6 +585,11 @@ class TrendlineLiveAdapter:
                 )
                 record_ticket(result.order, strategy="TL")
                 placed += 1
+                self._session_entries_today += 1
+                self._daily_trades += 1
+                daily_limits.note_entry_placed(
+                    1, ny_date=datetime.now(NY_TZ).date().isoformat()
+                )
                 leg_txt = f" leg{leg_no}/{len(legs)}" if len(legs) > 1 else ""
                 logger.info(
                     f"[TL] MARKET {signal.direction.upper()}{leg_txt} | {symbol} | "
@@ -765,7 +779,7 @@ class TrendlineLiveAdapter:
             logger.error("[TL] Account balance/equity is zero or negative — cannot size position")
             return None
 
-        min_balance = getattr(root_config, "TL_MIN_BALANCE", 15.0)
+        min_balance = getattr(root_config, "SB_MIN_BALANCE", 15.0)
         if usable_capital < min_balance:
             logger.warning(
                 f"[TL] Usable capital ${usable_capital:.2f} is below the "
@@ -773,18 +787,18 @@ class TrendlineLiveAdapter:
             )
             return None
 
-        base_risk_pct = (
-            self._risk_pct_override if self._risk_pct_override is not None
-            else float(getattr(root_config, "TL_RISK_PCT", 1.0))
-        )
+        if self._risk_pct_override is not None:
+            base_risk_pct = float(self._risk_pct_override)
+        else:
+            base_risk_pct = float(getattr(root_config, "SB_RISK_PCT", 1.0)) / self._risk_divisor
         risk_pct = max(0.01, min(base_risk_pct, 100.0))
         if usable_capital < 200.0:
             risk_pct = min(risk_pct, 2.0)
 
         risk_usd = usable_capital * (risk_pct / 100.0)
 
-        small_acct_threshold = getattr(root_config, "TL_SMALL_ACCT_THRESHOLD", 150.0)
-        max_risk_usd = getattr(root_config, "TL_MAX_RISK_USD", 1.0)
+        small_acct_threshold = getattr(root_config, "SB_SMALL_ACCT_THRESHOLD", 150.0)
+        max_risk_usd = getattr(root_config, "SB_MAX_RISK_USD", 1.0)
         if usable_capital < small_acct_threshold:
             capped_risk_usd = min(risk_usd, max_risk_usd)
             if capped_risk_usd < risk_usd:
@@ -830,75 +844,54 @@ class TrendlineLiveAdapter:
     def _check_daily_limits(self, symbol: str) -> bool:
         """Return True if new trades are allowed today.
 
-        Enforces TL_DAILY_LOSS_LIMIT_USD and TL_MAX_TRADES_PER_DAY by
-        querying MT5 history for today's closed Trendline deals. Resets at
-        the start of each NY trading day (same convention as Silver Bullet,
-        for a consistent "day" definition across strategies/dashboard)."""
-        from datetime import timezone
+        Uses the Settings Risk Parameters (SB_* as the UI source of truth) as
+        an account-wide gate across every strategy and symbol.
+        """
         from src.logger import logger
 
         today_ny = datetime.now(NY_TZ).date().isoformat()
+        daily_limits.reset_session_entries(today_ny)
 
         if today_ny != self._daily_limit_date:
             self._daily_limit_date = today_ny
             self._daily_loss_usd = 0.0
             self._daily_trades = 0
+            self._session_entries_today = 0
             self._daily_limit_halted = False
             logger.info(f"[TL] Daily limits reset for {today_ny}")
 
         if self._daily_limit_halted:
             return False
 
-        # deal.time (like bar/tick time) is stamped in the broker's server
-        # clock, so the from/to boundaries must be expressed in that same clock
-        # — mt5_cache shifts our true-UTC boundaries by the measured broker
-        # offset rather than a hardcoded guess, and fetches the window once per
-        # loop tick for all three strategies instead of once per adapter.
-        try:
-            deals = mt5_cache.history_deals_today(self._broker_utc_offset, NY_TZ)
-        except Exception as exc:
-            logger.warning(f"[TL] Failed to fetch history deals: {exc}")
-            deals = []
+        # Settings page values — mirrored onto TL_* at save time, but always
+        # prefer the UI source of truth so a stale TL_* cannot outrun the cap.
+        loss_limit = float(getattr(root_config, "SB_DAILY_LOSS_LIMIT_USD", 10.0))
+        max_trades = int(getattr(root_config, "SB_MAX_TRADES_PER_DAY", 5))
+        verdict = daily_limits.evaluate_daily_limits(
+            broker_utc_offset=self._broker_utc_offset,
+            ny_tz=NY_TZ,
+            max_trades=max_trades,
+            loss_limit_usd=loss_limit,
+        )
+        self._daily_loss_usd = verdict.daily_pnl
+        self._daily_trades = verdict.daily_entries
 
-        # Some brokers (e.g. AtlasFunded-Server) zero out `magic` on deals,
-        # so magic alone can't be trusted to attribute deals back to this
-        # strategy — fall back to the locally recorded ticket numbers TL
-        # itself confirmed opening (see src/ticket_store.py).
-        own_tickets = load_tickets(strategy="TL")
-
-        daily_pnl = 0.0
-        daily_entries = 0
-        for deal in deals:
-            # Scope to this instance's own symbol first — with multiple TL
-            # instances trading different symbols under the shared TL_MAGIC,
-            # magic/own_tickets alone would pool every symbol's deals into
-            # one count, silently applying one instance's daily cap to all.
-            if deal.symbol != symbol:
-                continue
-            if deal.magic != TL_MAGIC and deal.position_id not in own_tickets:
-                continue
-            if deal.type in (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL):
-                daily_pnl += deal.profit + deal.commission + deal.swap
-                if deal.entry == mt5.DEAL_ENTRY_IN:
-                    daily_entries += 1
-
-        self._daily_loss_usd = daily_pnl
-        self._daily_trades = daily_entries
-
-        loss_limit = getattr(root_config, "TL_DAILY_LOSS_LIMIT_USD", 10.0)
-        max_trades = getattr(root_config, "TL_MAX_TRADES_PER_DAY", 3)
-
-        if daily_pnl <= -abs(loss_limit):
+        if verdict.reason == "history_unavailable":
             logger.warning(
-                f"[TL] Daily loss limit reached | PnL ${daily_pnl:.2f} <= -${loss_limit:.2f}. "
-                f"No new trades today."
+                "[TL] Deal history unavailable — blocking new entries (fail-closed daily cap)."
+            )
+            return False
+        if verdict.reason == "loss_limit":
+            logger.warning(
+                f"[TL] Daily loss limit reached | PnL ${verdict.daily_pnl:.2f} <= "
+                f"-${loss_limit:.2f}. No new trades today."
             )
             self._daily_limit_halted = True
             return False
-
-        if daily_entries >= max_trades:
+        if verdict.reason == "trade_cap":
             logger.info(
-                f"[TL] Daily trade cap reached | {daily_entries}/{max_trades} trades. "
+                f"[TL] Daily trade cap reached | {verdict.daily_entries}/{max_trades} "
+                f"(open={verdict.open_owned}, session={daily_limits.session_entries_today()}). "
                 f"No new trades today."
             )
             self._daily_limit_halted = True
@@ -922,7 +915,7 @@ class TrendlineLiveAdapter:
             return False
 
         if self._drawdown_floor is None:
-            drawdown_pct = max(0.0, min(float(getattr(root_config, "TL_MAX_DRAWDOWN_PCT", 50.0)), 100.0))
+            drawdown_pct = max(0.0, min(float(getattr(root_config, "SB_MAX_DRAWDOWN_PCT", 50.0)), 100.0))
             self._drawdown_floor = usable_capital * (1.0 - drawdown_pct / 100.0)
             logger.info(
                 f"[TL] Drawdown floor set | Start=${usable_capital:.2f} "

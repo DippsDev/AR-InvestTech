@@ -35,9 +35,9 @@ import pandas as pd
 
 import config as root_config
 
-from src import mt5_cache
+from src import daily_limits, mt5_cache
 from src.split_target import split_lots
-from src.ticket_store import load_tickets, record_ticket
+from src.ticket_store import record_ticket
 
 from .config import SilverBulletConfig
 from .news_calendar import is_news_day
@@ -72,18 +72,17 @@ class SilverBulletLiveAdapter:
     _BAR_PERIOD_SEC = 300
 
     def __init__(self, cfg: SilverBulletConfig, symbol: Optional[str] = None,
-                 risk_pct_override: Optional[float] = None):
+                 risk_pct_override: Optional[float] = None,
+                 risk_divisor: int = 1):
         self._cfg = cfg
         self._generator = SignalGenerator(cfg)
         # Symbol we are allowed to trade.  All MT5 operations are guarded against
         # this to prevent cross-instrument execution.
         self._symbol: Optional[str] = symbol
-        # When multiple instances of this strategy run concurrently on
-        # different symbols, each is given a fraction of SB_RISK_PCT
-        # (see bot.py) so total account risk stays comparable to a single
-        # instance. None means "use SB_RISK_PCT directly" (single-instance,
-        # default behavior).
+        # risk_divisor splits Settings SB_RISK_PCT across concurrent SB+TL
+        # instances. risk_pct_override remains for tests / absolute shares.
         self._risk_pct_override: Optional[float] = risk_pct_override
+        self._risk_divisor: int = max(1, int(risk_divisor))
         self._last_bar_time: Optional[pd.Timestamp] = None  # last processed bar timestamp
         # Bar-period boundary this adapter last ran a full scan at, so an idle
         # adapter fetches bars once per M5 bar instead of once per loop tick.
@@ -107,6 +106,8 @@ class SilverBulletLiveAdapter:
         self._daily_loss_usd: float = 0.0
         self._daily_trades: int = 0
         self._daily_limit_halted: bool = False
+        # In-process floor so a history under-count cannot hide fills we just made.
+        self._session_entries_today: int = 0
         # Broker/trade-server clock offset from true UTC, remeasured each
         # cycle — see src/broker_time.py.
         self._broker_utc_offset: timedelta = timedelta(0)
@@ -573,6 +574,11 @@ class SilverBulletLiveAdapter:
                 if pend.is_off_hours:
                     self._off_hours_fills += 1
                 record_ticket(pos.ticket, strategy="SB")
+                self._session_entries_today += 1
+                self._daily_trades += 1
+                daily_limits.note_entry_placed(
+                    1, ny_date=datetime.now(NY_TZ).date().isoformat()
+                )
                 label = " [off-hours]" if pend.is_off_hours else ""
                 logger.info(
                     f"[SB] Limit filled → position #{pos.ticket} "
@@ -729,6 +735,14 @@ class SilverBulletLiveAdapter:
             legs = [(lots, signal.target_price)]
 
         for leg_no, (leg_lots, tp) in enumerate(legs, start=1):
+            max_trades = getattr(root_config, "SB_MAX_TRADES_PER_DAY", 5)
+            reserved = self._daily_trades + len(self._pending)
+            if reserved >= max_trades:
+                logger.info(
+                    f"[SB] Skipping remaining limit leg(s) | daily cap "
+                    f"{reserved}/{max_trades} already reached"
+                )
+                break
             request = {
                 "action":       mt5.TRADE_ACTION_PENDING,
                 "symbol":       symbol,
@@ -850,6 +864,13 @@ class SilverBulletLiveAdapter:
             legs = [(lots, clamp_tp(signal.target_price))]
 
         for leg_no, (leg_lots, tp) in enumerate(legs, start=1):
+            max_trades = getattr(root_config, "SB_MAX_TRADES_PER_DAY", 5)
+            if self._daily_trades >= max_trades:
+                logger.info(
+                    f"[SB] Skipping remaining market leg(s) | daily cap "
+                    f"{self._daily_trades}/{max_trades} already reached"
+                )
+                break
             result = mt5.order_send({
                 "action":       mt5.TRADE_ACTION_DEAL,
                 "symbol":       symbol,
@@ -885,6 +906,11 @@ class SilverBulletLiveAdapter:
             if is_off_hrs:
                 self._off_hours_fills += 1
             record_ticket(result.order, strategy="SB")
+            self._session_entries_today += 1
+            self._daily_trades += 1
+            daily_limits.note_entry_placed(
+                1, ny_date=datetime.now(NY_TZ).date().isoformat()
+            )
             leg_txt = f" leg{leg_no}/{len(legs)}" if len(legs) > 1 else ""
             logger.info(
                 f"[SB] MARKET {signal.direction.upper()}{leg_txt} | {symbol} | "
@@ -1147,13 +1173,13 @@ class SilverBulletLiveAdapter:
             )
             return None
 
-        # Clamp SB_RISK_PCT (or this instance's override share of it) to a
+        # Clamp Settings risk % (or this instance's share of it) to a
         # sane range.  On accounts under $200 also enforce a 2% ceiling so a
         # misconfigured env var cannot blow up a micro account in one trade.
-        base_risk_pct = (
-            self._risk_pct_override if self._risk_pct_override is not None
-            else float(root_config.SB_RISK_PCT)
-        )
+        if self._risk_pct_override is not None:
+            base_risk_pct = float(self._risk_pct_override)
+        else:
+            base_risk_pct = float(root_config.SB_RISK_PCT) / self._risk_divisor
         risk_pct = max(0.01, min(base_risk_pct, 100.0))
         if usable_capital < 200.0:
             risk_pct = min(risk_pct, 2.0)
@@ -1211,79 +1237,58 @@ class SilverBulletLiveAdapter:
     def _check_daily_limits(self, symbol: str) -> bool:
         """Return True if new trades are allowed today.
 
-        Enforces SB_DAILY_LOSS_LIMIT_USD and SB_MAX_TRADES_PER_DAY by querying
-        MT5 history for today's closed Silver Bullet deals.  The limits reset
-        at the start of each NY trading day.
+        Uses the Settings Risk Parameters as an account-wide gate across every
+        strategy and symbol (including live SB pendings reserved below).
         """
-        from datetime import datetime
         from src.logger import logger
 
         today_ny = datetime.now(NY_TZ).date().isoformat()
+        daily_limits.reset_session_entries(today_ny)
 
         # Reset on new day
         if today_ny != self._daily_limit_date:
             self._daily_limit_date = today_ny
             self._daily_loss_usd = 0.0
             self._daily_trades = 0
+            self._session_entries_today = 0
             self._daily_limit_halted = False
             logger.info(f"[SB] Daily limits reset for {today_ny}")
 
         if self._daily_limit_halted:
             return False
 
-        # Recompute from MT5 history so a restart does not bypass the limit.
-        # deal.time (like bar/tick time) is stamped in the broker's server
-        # clock, so the from/to boundaries must be expressed in that same clock
-        # — mt5_cache shifts our true-UTC boundaries by the measured broker
-        # offset rather than a hardcoded guess, and fetches the window once per
-        # loop tick for all three strategies instead of once per adapter.
-        try:
-            deals = mt5_cache.history_deals_today(self._broker_utc_offset, NY_TZ)
-        except Exception as exc:
-            logger.warning(f"[SB] Failed to fetch history deals: {exc}")
-            deals = []
+        loss_limit = float(getattr(root_config, "SB_DAILY_LOSS_LIMIT_USD", 10.0))
+        max_trades = int(getattr(root_config, "SB_MAX_TRADES_PER_DAY", 5))
+        # Live pendings reserve a slot so a burst of limits cannot all fill
+        # past the cap after history under-counts.
+        reserved = daily_limits.session_entries_today() + len(self._pending)
+        verdict = daily_limits.evaluate_daily_limits(
+            broker_utc_offset=self._broker_utc_offset,
+            ny_tz=NY_TZ,
+            max_trades=max_trades,
+            loss_limit_usd=loss_limit,
+            session_entries=reserved,
+        )
+        self._daily_loss_usd = verdict.daily_pnl
+        self._daily_trades = verdict.daily_entries
 
-        # Some brokers (e.g. AtlasFunded-Server) zero out `magic` on deals,
-        # so magic alone can't be trusted to attribute deals back to this
-        # strategy — fall back to the locally recorded ticket numbers SB
-        # itself confirmed opening (see src/ticket_store.py).
-        own_tickets = load_tickets(strategy="SB")
-
-        daily_pnl = 0.0
-        daily_entries = 0
-        for deal in deals:
-            # Scope to this instance's own symbol first — with multiple SB
-            # instances trading different symbols under the shared SB_MAGIC,
-            # magic/own_tickets alone would pool every symbol's deals into
-            # one count, silently applying one instance's daily cap to all.
-            if deal.symbol != symbol:
-                continue
-            if deal.magic != SB_MAGIC and deal.position_id not in own_tickets:
-                continue
-            if deal.type in (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL):
-                daily_pnl += deal.profit + deal.commission + deal.swap
-                # Count entries (the opening half of a position)
-                if deal.entry == mt5.DEAL_ENTRY_IN:
-                    daily_entries += 1
-
-        self._daily_loss_usd = daily_pnl
-        self._daily_trades = daily_entries
-
-        loss_limit = getattr(root_config, "SB_DAILY_LOSS_LIMIT_USD", 3.0)
-        max_trades = getattr(root_config, "SB_MAX_TRADES_PER_DAY", 2)
-
-        if daily_pnl <= -abs(loss_limit):
+        if verdict.reason == "history_unavailable":
             logger.warning(
-                f"[SB] Daily loss limit reached | PnL ${daily_pnl:.2f} <= -${loss_limit:.2f}. "
-                f"No new trades today."
+                "[SB] Deal history unavailable — blocking new entries (fail-closed daily cap)."
+            )
+            return False
+        if verdict.reason == "loss_limit":
+            logger.warning(
+                f"[SB] Daily loss limit reached | PnL ${verdict.daily_pnl:.2f} <= "
+                f"-${loss_limit:.2f}. No new trades today."
             )
             self._daily_limit_halted = True
             return False
-
-        if daily_entries >= max_trades:
+        if verdict.reason == "trade_cap":
             logger.info(
-                f"[SB] Daily trade cap reached | {daily_entries}/{max_trades} trades. "
-                f"No new trades today."
+                f"[SB] Daily trade cap reached | {verdict.daily_entries}/{max_trades} "
+                f"(open={verdict.open_owned}, session={daily_limits.session_entries_today()}, "
+                f"pending={len(self._pending)}). No new trades today."
             )
             self._daily_limit_halted = True
             return False

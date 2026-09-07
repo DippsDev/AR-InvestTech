@@ -85,9 +85,10 @@ class TestRiskBudgetSplit:
         # Whole-strategy exposure is MB_RISK_PCT, not a multiple of it.
         assert per_instance * len(MB_TARGETS) == pytest.approx(root_config.MB_RISK_PCT)
 
-    def test_mb_risk_default_is_small(self):
-        # MB's evidence is far weaker than SB's; the default must reflect that.
-        assert root_config.MB_RISK_PCT <= root_config.SB_RISK_PCT
+    def test_mb_risk_follows_settings_budget(self):
+        # Settings Risk Parameters are mirrored onto MB; it must not exceed
+        # the UI risk % (SB_RISK_PCT is the source of truth).
+        assert root_config.MB_RISK_PCT <= root_config.SB_RISK_PCT + 1e-9
 
     def test_mb_is_off_by_default(self):
         # Matches the TL precedent: a new money-spending strategy must not

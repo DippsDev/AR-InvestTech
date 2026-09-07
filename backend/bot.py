@@ -97,7 +97,7 @@ class SilverBulletBot:
                 cfg = apply_aggressive_stops(cfg)
             risk_share = config.SB_RISK_PCT / self._instance_count
             self.sb_adapters[symbol] = SilverBulletLiveAdapter(
-                cfg, symbol=symbol, risk_pct_override=risk_share
+                cfg, symbol=symbol, risk_divisor=self._instance_count
             )
 
         self.tl_adapters: dict[str, TrendlineLiveAdapter] = {}
@@ -106,9 +106,8 @@ class SilverBulletBot:
                 cfg = _dc_replace(base_tl_cfg, symbol=symbol, **overrides)
                 if config.SB_AGGRESSIVE:
                     cfg = apply_aggressive_stops(cfg)
-                risk_share = config.TL_RISK_PCT / self._instance_count
                 self.tl_adapters[symbol] = TrendlineLiveAdapter(
-                    cfg, symbol=symbol, risk_pct_override=risk_share
+                    cfg, symbol=symbol, risk_divisor=self._instance_count
                 )
 
         self.mb_adapters: dict[str, MutanabbyLiveAdapter] = {}
@@ -117,9 +116,8 @@ class SilverBulletBot:
                 cfg = _dc_replace(base_mb_cfg, symbol=symbol, **overrides)
                 if config.SB_AGGRESSIVE:
                     cfg = apply_aggressive_stops(cfg)
-                risk_share = config.MB_RISK_PCT / self._mb_instance_count
                 self.mb_adapters[symbol] = MutanabbyLiveAdapter(
-                    cfg, symbol=symbol, risk_pct_override=risk_share
+                    cfg, symbol=symbol, risk_divisor=self._mb_instance_count
                 )
 
         self.running = False

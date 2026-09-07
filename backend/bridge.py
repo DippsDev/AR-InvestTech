@@ -932,6 +932,29 @@ class BotBridge:
                     val = data[field]
                     updates[env_key] = str(val).lower() if isinstance(val, bool) else str(val)
 
+            # Settings Risk Parameters are account-wide — mirror every value onto
+            # SB/TL/MB so no strategy can keep trading under a different budget.
+            if "risk_pct" in data:
+                risk = str(data["risk_pct"])
+                updates["SB_RISK_PCT"] = risk
+                updates["TL_RISK_PCT"] = risk
+                updates["MB_RISK_PCT"] = risk
+            if "daily_loss_limit_usd" in data:
+                loss = str(data["daily_loss_limit_usd"])
+                updates["SB_DAILY_LOSS_LIMIT_USD"] = loss
+                updates["TL_DAILY_LOSS_LIMIT_USD"] = loss
+                updates["MB_DAILY_LOSS_LIMIT_USD"] = loss
+            if "max_trades_per_day" in data:
+                cap = str(data["max_trades_per_day"])
+                updates["SB_MAX_TRADES_PER_DAY"] = cap
+                updates["TL_MAX_TRADES_PER_DAY"] = cap
+                updates["MB_MAX_TRADES_PER_DAY"] = cap
+            if "max_drawdown_pct" in data:
+                dd = str(data["max_drawdown_pct"])
+                updates["SB_MAX_DRAWDOWN_PCT"] = dd
+                updates["TL_MAX_DRAWDOWN_PCT"] = dd
+                updates["MB_MAX_DRAWDOWN_PCT"] = dd
+
             # Password is write-only: an empty value means "leave it alone" so
             # the UI never has to display or round-trip the current secret.
             password = data.get("password", "")

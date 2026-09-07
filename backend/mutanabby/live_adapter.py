@@ -51,9 +51,9 @@ import pandas as pd
 
 import config as root_config
 
-from src import mt5_cache
+from src import daily_limits, mt5_cache
 from src.split_target import split_lots
-from src.ticket_store import load_tickets, record_ticket
+from src.ticket_store import record_ticket
 
 from .config import MutanabbyConfig
 from .strategy import Signal, SignalGenerator
@@ -83,13 +83,14 @@ class MutanabbyLiveAdapter:
     _BAR_PERIOD_SEC = 3600
 
     def __init__(self, cfg: MutanabbyConfig, symbol: Optional[str] = None,
-                 risk_pct_override: Optional[float] = None):
+                 risk_pct_override: Optional[float] = None,
+                 risk_divisor: int = 1):
         self._cfg = cfg
         self._symbol: Optional[str] = symbol
-        # When multiple instances of this strategy run concurrently on
-        # different symbols, each is given a fraction of MB_RISK_PCT (see
-        # bot.py). None means "use MB_RISK_PCT directly".
+        # risk_divisor splits Settings SB_RISK_PCT across concurrent MB
+        # instances. risk_pct_override remains for tests / absolute shares.
         self._risk_pct_override: Optional[float] = risk_pct_override
+        self._risk_divisor: int = max(1, int(risk_divisor))
         self._last_bar_time: Optional[pd.Timestamp] = None
         # Bar-period boundary this adapter last ran a full scan at, so an
         # idle adapter fetches bars once per H1 bar, not once per loop tick.
@@ -107,6 +108,7 @@ class MutanabbyLiveAdapter:
         self._daily_loss_usd: float = 0.0
         self._daily_trades: int = 0
         self._daily_limit_halted: bool = False
+        self._session_entries_today: int = 0
         # Broker/trade-server clock offset from true UTC, remeasured each cycle.
         self._broker_utc_offset: timedelta = timedelta(0)
         # Set by bot.py each loop tick. Accepted for interface parity only —
@@ -545,6 +547,13 @@ class MutanabbyLiveAdapter:
             legs = [(lots, clamp_tp(signal.target_price))]
 
         for leg_no, (leg_lots, tp) in enumerate(legs, start=1):
+            max_trades = int(getattr(root_config, "SB_MAX_TRADES_PER_DAY", 5))
+            if self._daily_trades >= max_trades:
+                logger.info(
+                    f"[MB] Skipping remaining leg(s) | daily cap "
+                    f"{self._daily_trades}/{max_trades} already reached"
+                )
+                break
             result = mt5.order_send({
                 "action":       mt5.TRADE_ACTION_DEAL,
                 "symbol":       symbol,
@@ -571,6 +580,11 @@ class MutanabbyLiveAdapter:
                     fill_price=fill_price,
                 )
                 record_ticket(result.order, strategy="MB")
+                self._session_entries_today += 1
+                self._daily_trades += 1
+                daily_limits.note_entry_placed(
+                    1, ny_date=datetime.now(NY_TZ).date().isoformat()
+                )
                 leg_txt = f" leg{leg_no}/{len(legs)}" if len(legs) > 1 else ""
                 logger.info(
                     f"[MB] MARKET {signal.direction.upper()}{leg_txt} | {symbol} | "
@@ -663,7 +677,7 @@ class MutanabbyLiveAdapter:
             logger.error("[MB] Account balance/equity is zero or negative — cannot size position")
             return None
 
-        min_balance = getattr(root_config, "MB_MIN_BALANCE", 15.0)
+        min_balance = getattr(root_config, "SB_MIN_BALANCE", 15.0)
         if usable_capital < min_balance:
             logger.warning(
                 f"[MB] Usable capital ${usable_capital:.2f} is below the "
@@ -671,18 +685,18 @@ class MutanabbyLiveAdapter:
             )
             return None
 
-        base_risk_pct = (
-            self._risk_pct_override if self._risk_pct_override is not None
-            else float(getattr(root_config, "MB_RISK_PCT", 0.25))
-        )
+        if self._risk_pct_override is not None:
+            base_risk_pct = float(self._risk_pct_override)
+        else:
+            base_risk_pct = float(getattr(root_config, "SB_RISK_PCT", 1.0)) / self._risk_divisor
         risk_pct = max(0.01, min(base_risk_pct, 100.0))
         if usable_capital < 200.0:
             risk_pct = min(risk_pct, 2.0)
 
         risk_usd = usable_capital * (risk_pct / 100.0)
 
-        small_acct_threshold = getattr(root_config, "MB_SMALL_ACCT_THRESHOLD", 150.0)
-        max_risk_usd = getattr(root_config, "MB_MAX_RISK_USD", 1.0)
+        small_acct_threshold = getattr(root_config, "SB_SMALL_ACCT_THRESHOLD", 150.0)
+        max_risk_usd = getattr(root_config, "SB_MAX_RISK_USD", 1.0)
         if usable_capital < small_acct_threshold:
             capped_risk_usd = min(risk_usd, max_risk_usd)
             if capped_risk_usd < risk_usd:
@@ -728,72 +742,52 @@ class MutanabbyLiveAdapter:
     def _check_daily_limits(self, symbol: str) -> bool:
         """Return True if new trades are allowed today.
 
-        Enforces MB_DAILY_LOSS_LIMIT_USD and MB_MAX_TRADES_PER_DAY by querying
-        MT5 history for today's closed Mutanabby deals. Resets at the start of
-        each NY trading day (same convention as SB/TL, for a consistent "day"
-        definition across strategies and the dashboard).
+        Uses the Settings Risk Parameters as an account-wide gate across every
+        strategy and symbol.
         """
-        from datetime import timezone
         from src.logger import logger
 
         today_ny = datetime.now(NY_TZ).date().isoformat()
+        daily_limits.reset_session_entries(today_ny)
 
         if today_ny != self._daily_limit_date:
             self._daily_limit_date = today_ny
             self._daily_loss_usd = 0.0
             self._daily_trades = 0
+            self._session_entries_today = 0
             self._daily_limit_halted = False
             logger.info(f"[MB] Daily limits reset for {today_ny}")
 
         if self._daily_limit_halted:
             return False
 
-        # deal.time is stamped in the broker's server clock, so the from/to
-        # boundaries must be expressed in that same clock — mt5_cache applies
-        # the measured offset and fetches the window once per loop tick for all
-        # three strategies instead of once per adapter.
-        try:
-            deals = mt5_cache.history_deals_today(self._broker_utc_offset, NY_TZ)
-        except Exception as exc:
-            logger.warning(f"[MB] Failed to fetch history deals: {exc}")
-            deals = []
+        loss_limit = float(getattr(root_config, "SB_DAILY_LOSS_LIMIT_USD", 10.0))
+        max_trades = int(getattr(root_config, "SB_MAX_TRADES_PER_DAY", 5))
+        verdict = daily_limits.evaluate_daily_limits(
+            broker_utc_offset=self._broker_utc_offset,
+            ny_tz=NY_TZ,
+            max_trades=max_trades,
+            loss_limit_usd=loss_limit,
+        )
+        self._daily_loss_usd = verdict.daily_pnl
+        self._daily_trades = verdict.daily_entries
 
-        # Some brokers zero out `magic` on deals, so fall back to the locally
-        # recorded tickets MB itself confirmed opening (src/ticket_store.py).
-        own_tickets = load_tickets(strategy="MB")
-
-        daily_pnl = 0.0
-        daily_entries = 0
-        for deal in deals:
-            # Scope to this instance's own symbol first — with several MB
-            # instances sharing MB_MAGIC, magic alone would pool every symbol's
-            # deals into one count and apply one instance's cap to all.
-            if deal.symbol != symbol:
-                continue
-            if deal.magic != MB_MAGIC and deal.position_id not in own_tickets:
-                continue
-            if deal.type in (mt5.DEAL_TYPE_BUY, mt5.DEAL_TYPE_SELL):
-                daily_pnl += deal.profit + deal.commission + deal.swap
-                if deal.entry == mt5.DEAL_ENTRY_IN:
-                    daily_entries += 1
-
-        self._daily_loss_usd = daily_pnl
-        self._daily_trades = daily_entries
-
-        loss_limit = getattr(root_config, "MB_DAILY_LOSS_LIMIT_USD", 10.0)
-        max_trades = getattr(root_config, "MB_MAX_TRADES_PER_DAY", 3)
-
-        if daily_pnl <= -abs(loss_limit):
+        if verdict.reason == "history_unavailable":
             logger.warning(
-                f"[MB] Daily loss limit reached | PnL ${daily_pnl:.2f} <= -${loss_limit:.2f}. "
-                f"No new trades today."
+                "[MB] Deal history unavailable — blocking new entries (fail-closed daily cap)."
+            )
+            return False
+        if verdict.reason == "loss_limit":
+            logger.warning(
+                f"[MB] Daily loss limit reached | PnL ${verdict.daily_pnl:.2f} <= "
+                f"-${loss_limit:.2f}. No new trades today."
             )
             self._daily_limit_halted = True
             return False
-
-        if daily_entries >= max_trades:
+        if verdict.reason == "trade_cap":
             logger.info(
-                f"[MB] Daily trade cap reached | {daily_entries}/{max_trades} trades. "
+                f"[MB] Daily trade cap reached | {verdict.daily_entries}/{max_trades} "
+                f"(open={verdict.open_owned}, session={daily_limits.session_entries_today()}). "
                 f"No new trades today."
             )
             self._daily_limit_halted = True
@@ -817,7 +811,7 @@ class MutanabbyLiveAdapter:
             return False
 
         if self._drawdown_floor is None:
-            drawdown_pct = max(0.0, min(float(getattr(root_config, "MB_MAX_DRAWDOWN_PCT", 50.0)), 100.0))
+            drawdown_pct = max(0.0, min(float(getattr(root_config, "SB_MAX_DRAWDOWN_PCT", 50.0)), 100.0))
             self._drawdown_floor = usable_capital * (1.0 - drawdown_pct / 100.0)
             logger.info(
                 f"[MB] Drawdown floor set | Start=${usable_capital:.2f} "

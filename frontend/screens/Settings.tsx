@@ -224,10 +224,10 @@ export default function Settings({ onSave, doLoad, connected, server, pingMs, ru
       <div style={cardStyle}>
         <SectionHeader label="Risk Parameters" color="var(--dash-accent-orange)" />
         <div className="grid-3" style={{ padding: 16 }}>
-          {fld("risk_pct",             "Risk per Trade (%)")}
-          {fld("daily_loss_limit_usd", "Daily Loss Limit ($)")}
-          {fld("max_trades_per_day",   "Max Trades / Day (SB + TL + MB)")}
-          {fld("max_drawdown_pct",     "Max Drawdown (%)")}
+          {fld("risk_pct",             "Risk per Trade (%) — all strategies")}
+          {fld("daily_loss_limit_usd", "Daily Loss Limit ($) — account-wide")}
+          {fld("max_trades_per_day",   "Max Trades / Day — account-wide")}
+          {fld("max_drawdown_pct",     "Max Drawdown (%) — all strategies")}
         </div>
       </div>
 
