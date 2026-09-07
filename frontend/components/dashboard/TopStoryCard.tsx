@@ -41,6 +41,7 @@ export default function TopStoryCard({ stats }: Props) {
         flexDirection: "column",
         gap: 14,
         minHeight: 0,
+        height: "100%",
       }}
     >
       <div style={{ fontSize: 10, fontWeight: 700, color: "#EAB308", letterSpacing: ".08em" }}>BOT STATUS</div>

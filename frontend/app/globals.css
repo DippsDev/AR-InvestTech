@@ -502,23 +502,27 @@ html, body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 14px;
-  /* start — not stretch — so expanding Open Trades legs doesn't pull
-     Bot Status / Account taller to match the open dropdown. */
-  align-items: start;
+  align-items: stretch;
 }
 
-/* Compact grouped list in the third top-row column. align-self:start so
-   the card hugs its groups instead of stretching to Bot Status height and
-   leaving empty space under the last group. */
+/* Open Trades fills the shared top-row height so Account / Bot Status don't
+   leave a hollow strip beside a taller trades card. Expanded lots pop over
+   as an overlay so opening a group does not grow the row. */
 .open-trades-card {
-  align-self: start;
-  height: auto;
+  height: 100%;
+  position: relative;
+  z-index: 2;
+  overflow: visible;
 }
 .open-trades-list {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
 .open-trade-group {
+  position: relative;
   padding: 10px 0;
   border-bottom: 1px solid var(--dash-border);
 }
@@ -568,16 +572,22 @@ html, body {
   flex-shrink: 0;
 }
 .open-trade-legs {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 30;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 10px;
-  padding-left: 16px;
-  /* Cap growth so expanding lots stays inside this card's scroll region
-     instead of lengthening the top-row layout. */
-  max-height: 180px;
+  max-height: 200px;
   overflow-y: auto;
   overscroll-behavior: contain;
+  padding: 8px;
+  background: var(--dash-card-bg);
+  border: 1px solid var(--dash-border);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
 }
 .open-trade-leg {
   display: flex;

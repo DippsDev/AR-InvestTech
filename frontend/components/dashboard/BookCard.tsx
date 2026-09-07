@@ -52,6 +52,7 @@ export default function BookCard({ book }: Props) {
         display: "flex",
         flexDirection: "column",
         gap: 10,
+        height: "100%",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", rowGap: 6 }}>
@@ -105,7 +106,7 @@ export default function BookCard({ book }: Props) {
         </span>
       </div>
 
-      <div style={{ marginTop: "auto" }}>
+      <div style={{ marginTop: "auto", width: "100%", flex: 1, display: "flex", alignItems: "flex-end", minHeight: 80 }}>
         <SvgAreaChart data={data} color={book.color} />
       </div>
     </div>

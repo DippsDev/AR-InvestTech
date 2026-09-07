@@ -227,10 +227,7 @@ export default function OpenTradeCard({ stats }: Props) {
         display: "flex",
         flexDirection: "column",
         gap: 10,
-        // Size to the groups — stretching to Bot Status / Account height
-        // leaves a hollow strip under the last group.
-        height: "auto",
-        alignSelf: "start",
+        height: "100%",
         minHeight: 0,
         minWidth: 0,
         width: "100%",
