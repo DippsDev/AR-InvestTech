@@ -2,9 +2,9 @@
 
 Silver Bullet symbols were rebuilt after an Aggressive-mode scan (extra
 London + 13:30 ET windows, multiple trades per window, volatility-scaled
-FVG/stop). On that screen FX majors went 0% win rate; DE30m was the only
-name Aggressive improved vs baseline; USTECm stayed profitable under
-Aggressive (PF 6.2) even though core-window-only was stronger.
+FVG/stop). On that screen FX majors went 0% win rate; USTECm stayed
+profitable under Aggressive (PF 6.2) even though core-window-only was
+stronger.
 
 EURUSDm / GBPUSDm were therefore dropped. US30m stays out of SB (it placed
 #6/12 on the original 180-day campaign and Aggressive did not lift it).
@@ -12,6 +12,11 @@ XAUUSDm stays: it was added on 2026-08-15 after a dedicated evaluation
 (backtests/sb_candidate_eval.py) at PF 2.56 full history / 3.10 recent, and
 that result was not part of the FX cull. USTECm's earlier core-window SB
 rejection (PF 1.37 / 0.39) is overridden by the Aggressive screen.
+
+DE30m was dropped from SB on 2026-09-05. On the current Yahoo M5 sample
+(2026-05-27 → 2026-08-18) SB DE30m was 1/3 wins, PF 0.11, −$97.60 — the
+only live SB name that finished net negative. The same tape on Trendline
+was 4/5 wins, PF 16.21, so DE30m stays in TL_TARGETS only.
 
 Trendline / Mutanabby lists are unchanged from the 180-day campaign.
 
@@ -22,7 +27,6 @@ relative to US30's (24.9 points).
 
 # symbol -> SilverBulletConfig field overrides
 SB_TARGETS: dict[str, dict[str, float]] = {
-    "DE30m":   dict(fvg_min_points=10.4578,   stop_buffer_points=0.373494,   min_risk_points=3.73494),
     "XAUUSDm": dict(fvg_min_points=3.19639,   stop_buffer_points=0.114157,   min_risk_points=1.14157),
     "USTECm":  dict(fvg_min_points=15.4618,   stop_buffer_points=0.552209,   min_risk_points=5.52209),
 }
@@ -75,8 +79,15 @@ TL_TARGETS: dict[str, dict[str, float]] = {
 # indicator draws. Everything else stays at MutanabbyConfig's chart-faithful
 # defaults, including no breakeven and no trailing stop — that is the exact
 # configuration the reported profit factors were measured with.
+#
+# ETHUSDm was added 2026-09-05 as the 24/7 weekend book. On the last 180 days
+# of stored M5 (resampled to H1) it is the only crypto name that cleared the
+# same bar as the live MB set: 21 trades, PF 1.27, +$365. BTCUSDm failed that
+# screen on MB (PF 0.52) and both coins failed Silver Bullet and Trendline,
+# so they stay off those lists.
 MB_TARGETS: dict[str, dict[str, float]] = {
     "US30m":   dict(sensitivity=6.0, rr=2.0),
     "JP225m":  dict(sensitivity=6.0, rr=2.0),
     "USDJPYm": dict(sensitivity=6.0, rr=2.0),
+    "ETHUSDm": dict(sensitivity=6.0, rr=2.0),
 }

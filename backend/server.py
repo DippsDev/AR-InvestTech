@@ -11,6 +11,8 @@ for any deployment reachable from outside the machine.
 from __future__ import annotations
 
 import secrets
+import threading
+import time
 from contextlib import asynccontextmanager
 
 import httpx
@@ -18,17 +20,22 @@ import uvicorn
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import config
 from bridge import BotBridge
+from purchase_notify import digits_only, send_purchase_notification
 
 # Reachable without a token: the supervisor and the tunnel's health check
 # need to know the process is alive before they have any credentials, and
 # neither response reveals anything sensitive.
-_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc"}
+_PUBLIC_PATHS = {"/health", "/docs", "/openapi.json", "/redoc", "/purchase/request"}
+_purchase_hits: dict[str, list[float]] = {}
+_purchase_hits_lock = threading.Lock()
+_PURCHASE_RATE_WINDOW_S = 3600
+_PURCHASE_RATE_MAX = 5
 
 # Reachable without credentials ONLY while this machine has no activated
 # license. See _require_token for why that condition is load-bearing.
@@ -180,7 +187,15 @@ async def lifespan(app: FastAPI):
         timeout=config.GATEWAY_TIMEOUT_S,
         follow_redirects=False,
     )
-    bridge.resume_on_startup()
+    # MT5 IPC can hang for minutes (or never return). Blocking lifespan on
+    # that makes /health — and the dashboard — look dead. Resume in the
+    # background so the API is reachable immediately; the supervisor still
+    # brings MT5 and the bot back once the terminal answers.
+    threading.Thread(
+        target=bridge.resume_on_startup,
+        name="ar-startup-resume",
+        daemon=True,
+    ).start()
     try:
         yield
     finally:
@@ -225,6 +240,49 @@ class LicenseBody(BaseModel):
 @app.post("/license/validate")
 def validate_license(body: LicenseBody):
     return bridge.validate_license(body.key)
+
+
+class PurchaseBody(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    email: str = Field(min_length=3, max_length=200)
+    whatsapp: str = Field(min_length=7, max_length=40)
+    broker: str = Field(default="", max_length=120)
+    notes: str = Field(default="", max_length=1000)
+
+
+def _purchase_rate_ok(ip: str) -> bool:
+    now = time.monotonic()
+    with _purchase_hits_lock:
+        stamps = [t for t in _purchase_hits.get(ip, []) if now - t < _PURCHASE_RATE_WINDOW_S]
+        if len(stamps) >= _PURCHASE_RATE_MAX:
+            _purchase_hits[ip] = stamps
+            return False
+        stamps.append(now)
+        _purchase_hits[ip] = stamps
+        return True
+
+
+@app.post("/purchase/request")
+def purchase_request(body: PurchaseBody, request: Request):
+    """Public: a prospect has no license yet, so this cannot require a token."""
+    ip = request.client.host if request.client else "unknown"
+    if not _purchase_rate_ok(ip):
+        raise HTTPException(status_code=429, detail="Too many requests. Please try again later.")
+    if "@" not in body.email or "." not in body.email:
+        raise HTTPException(status_code=400, detail="Enter a valid email address.")
+    if len(digits_only(body.whatsapp)) < 7:
+        raise HTTPException(status_code=400, detail="Enter a WhatsApp number we can call you on.")
+    try:
+        send_purchase_notification(
+            body.name.strip(),
+            body.email.strip(),
+            body.whatsapp.strip(),
+            body.broker.strip(),
+            body.notes.strip(),
+        )
+    except Exception:
+        raise HTTPException(status_code=502, detail="Could not send the request. Please try again.")
+    return {"ok": True}
 
 
 # ── MT5 ────────────────────────────────────────────────────────────────

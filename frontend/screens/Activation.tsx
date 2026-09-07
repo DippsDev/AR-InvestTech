@@ -158,7 +158,7 @@ export default function Activation({ onActivated, doValidate }: Props) {
 
         <div style={{ fontSize: 12, color: "var(--dash-text-dim)" }}>
           Need a license?{" "}
-          <a href="#" style={{ color: "var(--dash-text-sub)", fontWeight: 600, textDecoration: "none" }}>
+          <a href="/purchase" style={{ color: "var(--dash-text-sub)", fontWeight: 600, textDecoration: "none" }}>
             Purchase →
           </a>
         </div>

@@ -140,8 +140,8 @@ function TradeToggle({ running, onStartBot, onStopBot }: Pick<Props, "running" |
 }
 
 export default function TickerBar({ running, stats, onOpenSettings, onDisconnect, onStartBot, onStopBot }: Props) {
-  // One fact per uniquely-traded symbol (DE30m is traded by both SB and TL,
-  // at the same price, so it only needs one tile here).
+  // One fact per uniquely-traded symbol. A name that appears on more than
+  // one strategy (same price) only needs one tile here.
   const symbolFacts: { label: string; value: string }[] = [];
   const seen = new Set<string>();
   for (const s of stats?.active_symbols ?? []) {

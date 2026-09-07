@@ -137,21 +137,13 @@ function LegRow({ trade }: { trade: OpenPosition }) {
 function SinglePosition({ trade }: { trade: OpenPosition }) {
   const isUp = trade.float_pnl.startsWith("+") || parseMoney(trade.float_pnl) >= 0;
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 6,
-        paddingBottom: 10,
-        borderBottom: "1px solid var(--dash-border)",
-      }}
-    >
+    <div className="open-trade-tile">
       <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 10 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
-          <span style={{ fontSize: 18, fontWeight: 800, color: "var(--dash-text)" }}>{trade.symbol}</span>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 8, minWidth: 0 }}>
+          <span style={{ fontSize: 18, fontWeight: 800, color: "var(--dash-text)", overflow: "hidden", textOverflow: "ellipsis" }}>{trade.symbol}</span>
           <SideBadge side={trade.side} />
         </div>
-        <span style={{ fontSize: 13, fontWeight: 700, color: isUp ? "#22C55E" : "#EF4444" }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: isUp ? "#22C55E" : "#EF4444", flexShrink: 0 }}>
           {trade.float_pnl}
         </span>
       </div>
@@ -282,7 +274,7 @@ export default function OpenTradeCard({ stats }: Props) {
 
   return (
     <div
-      className="dash-card"
+      className={`dash-card${trades.length > 0 ? " open-trades-card--populated" : ""}`}
       style={{
         background: "var(--dash-card-bg)",
         border: "1px solid var(--dash-border)",
@@ -294,6 +286,7 @@ export default function OpenTradeCard({ stats }: Props) {
         overflowY: "auto",
         height: "100%",
         minHeight: 0,
+        minWidth: 0,
       }}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -309,7 +302,7 @@ export default function OpenTradeCard({ stats }: Props) {
       </div>
 
       {trades.length > 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        <div className="open-trades-grid">
           {groups.map(group =>
             group.trades.length === 1 ? (
               <SinglePosition key={group.key} trade={group.trades[0]} />

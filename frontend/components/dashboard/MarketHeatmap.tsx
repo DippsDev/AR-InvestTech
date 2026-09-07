@@ -15,10 +15,10 @@ function tileColor(pct: number | null): string {
   return pct >= 0 ? `rgba(34, 197, 94, ${alpha})` : `rgba(239, 68, 68, ${alpha})`;
 }
 
-// Loading-state placeholder — mirrors the backend's real top-3-per-strategy
-// target list (see multi_symbol_targets.py) so the skeleton doesn't promise
+// Loading-state placeholder — mirrors unique symbols from SB_TARGETS +
+// TL_TARGETS (see multi_symbol_targets.py) so the skeleton doesn't promise
 // tiles that won't actually show up once data loads.
-const PLACEHOLDER_SYMBOLS = ["DE30m", "EURUSDm", "GBPUSDm", "USDJPYm", "USTECm"];
+const PLACEHOLDER_SYMBOLS = ["XAUUSDm", "USTECm", "DE30m", "USDJPYm", "ETHUSDm"];
 
 export default function MarketHeatmap({ readings }: Props) {
   const source: MarketReading[] =
