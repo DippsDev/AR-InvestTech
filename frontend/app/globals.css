@@ -444,11 +444,14 @@ html, body {
   align-items: stretch;
 }
 
-/* Compact grouped list that fills the third top-row column. */
+/* Compact grouped list in the third top-row column. align-self:start so
+   the card hugs its groups instead of stretching to Bot Status height and
+   leaving empty space under the last group. */
+.open-trades-card {
+  align-self: start;
+  height: auto;
+}
 .open-trades-list {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
@@ -674,15 +677,7 @@ html, body {
     flex: 1 1 100% !important;
   }
 
-  /* On stacked mobile layout the open-trades card sizes to its groups;
-     don't force a stretched empty interior. */
-  .open-trades-card {
-    height: auto !important;
-  }
-  .open-trades-list {
-    flex: 0 0 auto;
-    overflow: visible;
-  }
+  /* On stacked mobile layout the open-trades card sizes to its groups. */
   .open-trade-group-hit {
     min-height: 44px;
   }
