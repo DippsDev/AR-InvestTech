@@ -25,6 +25,8 @@ import numpy as np
 from silver_bullet.indicators import (  # noqa: F401  (re-exported for convenience)
     get_swing_highs,
     get_swing_lows,
+    is_swing_high,
+    is_swing_low,
     nearest_buyside_liquidity,
     nearest_sellside_liquidity,
 )
@@ -117,7 +119,28 @@ def build_support_line(
     candidates = get_swing_lows(lows[: current_bar + 1], swing_lookback)
     if len(candidates) < 2:
         return None
-    (i1, v1), (i2, v2) = candidates[-2], candidates[-1]
+    return build_support_line_from_swings(
+        lows, highs, current_bar, candidates[-2], candidates[-1],
+        avg_range_lookback, steepness_max_ratio, obstruction_tolerance_points,
+    )
+
+
+def build_support_line_from_swings(
+    lows: np.ndarray,
+    highs: np.ndarray,
+    current_bar: int,
+    anchor1: tuple[int, float],
+    anchor2: tuple[int, float],
+    avg_range_lookback: int,
+    steepness_max_ratio: float,
+    obstruction_tolerance_points: float,
+) -> Optional[TrendLine]:
+    """Build support from two already-confirmed swings.
+
+    This is the O(1)-lookup counterpart to :func:`build_support_line`; the
+    historical backtester supplies its incrementally maintained latest pair.
+    """
+    (i1, v1), (i2, v2) = anchor1, anchor2
     if _obstructed_support(lows, i1, v1, i2, v2, obstruction_tolerance_points):
         return None
     avg_range = _avg_range(highs, lows, current_bar, avg_range_lookback)
@@ -141,7 +164,24 @@ def build_resistance_line(
     candidates = get_swing_highs(highs[: current_bar + 1], swing_lookback)
     if len(candidates) < 2:
         return None
-    (i1, v1), (i2, v2) = candidates[-2], candidates[-1]
+    return build_resistance_line_from_swings(
+        lows, highs, current_bar, candidates[-2], candidates[-1],
+        avg_range_lookback, steepness_max_ratio, obstruction_tolerance_points,
+    )
+
+
+def build_resistance_line_from_swings(
+    lows: np.ndarray,
+    highs: np.ndarray,
+    current_bar: int,
+    anchor1: tuple[int, float],
+    anchor2: tuple[int, float],
+    avg_range_lookback: int,
+    steepness_max_ratio: float,
+    obstruction_tolerance_points: float,
+) -> Optional[TrendLine]:
+    """Build resistance from two already-confirmed swings."""
+    (i1, v1), (i2, v2) = anchor1, anchor2
     if _obstructed_resistance(highs, i1, v1, i2, v2, obstruction_tolerance_points):
         return None
     avg_range = _avg_range(highs, lows, current_bar, avg_range_lookback)

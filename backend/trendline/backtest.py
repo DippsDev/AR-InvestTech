@@ -60,6 +60,8 @@ class Trade:
 
     # --- Context (for diagnostics) ---
     line_kind: str = ""
+    line_anchor1_bar: int = 0
+    line_anchor2_bar: int = 0
     touch_bar: int = 0
     pattern: str = ""
 
@@ -97,12 +99,21 @@ class BacktestCosts:
     point_value: float = 1.0
 
 
-def run_backtest(df: pd.DataFrame, cfg: TrendlineConfig, costs: Optional[BacktestCosts] = None) -> list[Trade]:
+def run_backtest(
+    df: pd.DataFrame,
+    cfg: TrendlineConfig,
+    costs: Optional[BacktestCosts] = None,
+    *,
+    incremental_swings: bool = True,
+) -> list[Trade]:
     """
     Run the Trendline backtest over `df`.
 
     `df` must have columns: timestamp_ny (tz-aware), open, high, low, close,
     date_str, is_news_day (bool).
+
+    ``incremental_swings`` is the fast historical-data path. Set it to False
+    only for regression comparisons against the original prefix-scan engine.
     """
     costs = costs or BacktestCosts()
     highs   = df["high"].to_numpy(dtype=float)
@@ -114,7 +125,11 @@ def run_backtest(df: pd.DataFrame, cfg: TrendlineConfig, costs: Optional[Backtes
     is_news = df["is_news_day"].to_numpy(dtype=bool)
 
     n = len(df)
-    generator = SignalGenerator(cfg)
+    # Historical arrays have stable bar indices, so confirmed swings can be
+    # maintained incrementally instead of rescanning the full prefix twice on
+    # every bar. The live adapter intentionally keeps the default stateless
+    # mode because its rolling MT5 window shifts indices between cycles.
+    generator = SignalGenerator(cfg, incremental_swings=incremental_swings)
     trades: list[Trade] = []
     trade_counter = 0
 
@@ -240,6 +255,8 @@ def run_backtest(df: pd.DataFrame, cfg: TrendlineConfig, costs: Optional[Backtes
                     target_price_2 = sig.target_price_2,
                     tp1_fraction = cfg.tp1_fraction if sig.target_price_2 is not None else 1.0,
                     line_kind    = sig.line_kind,
+                    line_anchor1_bar = sig.line_anchor1_bar,
+                    line_anchor2_bar = sig.line_anchor2_bar,
                     touch_bar    = sig.touch_bar,
                     pattern      = sig.pattern,
                     risk_points  = risk_points,

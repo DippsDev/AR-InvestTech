@@ -21,10 +21,14 @@ from .config import TrendlineConfig
 from .indicators import (
     TrendLine,
     build_resistance_line,
+    build_resistance_line_from_swings,
     build_support_line,
+    build_support_line_from_swings,
     check_breach,
     check_touch,
     is_same_line,
+    is_swing_high,
+    is_swing_low,
     nearest_buyside_liquidity,
     nearest_sellside_liquidity,
 )
@@ -58,17 +62,92 @@ class SignalGenerator:
     per-session dict.
     """
 
-    def __init__(self, cfg: TrendlineConfig):
+    def __init__(self, cfg: TrendlineConfig, *, incremental_swings: bool = False):
         if cfg.split_targets:
             validate_split(cfg.tp1_rr, cfg.tp2_rr, cfg.tp1_fraction)
         self._cfg = cfg
         self._support_line: Optional[TrendLine] = None
         self._resistance_line: Optional[TrendLine] = None
         self._trade_active: bool = False
+        self._incremental_swings = incremental_swings
+        self._last_swing_scan_bar = -1
+        self._swing_highs: list[tuple[int, float]] = []
+        self._swing_lows: list[tuple[int, float]] = []
 
     def _log(self, msg: str, level: str = "info") -> None:
         from src.logger import logger
         getattr(logger, level)(msg)
+
+    @staticmethod
+    def _remember_swing(swings: list[tuple[int, float]], swing: tuple[int, float]) -> None:
+        swings.append(swing)
+        if len(swings) > 2:
+            del swings[0]
+
+    def _advance_swing_cache(
+        self,
+        bar_idx: int,
+        highs: np.ndarray,
+        lows: np.ndarray,
+    ) -> None:
+        """Record swings as their right-hand confirmation bar closes.
+
+        Backtests may skip calls while a trade is open, so this catches up all
+        intervening bars. Only the latest two swings of each kind are needed.
+        """
+        if bar_idx < self._last_swing_scan_bar:
+            self._last_swing_scan_bar = -1
+            self._swing_highs.clear()
+            self._swing_lows.clear()
+
+        lookback = self._cfg.swing_lookback
+        for confirmed_at in range(self._last_swing_scan_bar + 1, bar_idx + 1):
+            center = confirmed_at - lookback
+            if center < lookback:
+                continue
+            visible_highs = highs[: confirmed_at + 1]
+            visible_lows = lows[: confirmed_at + 1]
+            if is_swing_high(visible_highs, center, lookback):
+                self._remember_swing(self._swing_highs, (center, float(highs[center])))
+            if is_swing_low(visible_lows, center, lookback):
+                self._remember_swing(self._swing_lows, (center, float(lows[center])))
+        self._last_swing_scan_bar = max(self._last_swing_scan_bar, bar_idx)
+
+    def _candidate_lines(
+        self,
+        bar_idx: int,
+        highs: np.ndarray,
+        lows: np.ndarray,
+    ) -> tuple[Optional[TrendLine], Optional[TrendLine]]:
+        cfg = self._cfg
+        if not self._incremental_swings:
+            return (
+                build_support_line(
+                    lows, highs, bar_idx, cfg.swing_lookback, cfg.avg_range_lookback,
+                    cfg.steepness_max_ratio, cfg.obstruction_tolerance_points,
+                ),
+                build_resistance_line(
+                    lows, highs, bar_idx, cfg.swing_lookback, cfg.avg_range_lookback,
+                    cfg.steepness_max_ratio, cfg.obstruction_tolerance_points,
+                ),
+            )
+
+        self._advance_swing_cache(bar_idx, highs, lows)
+        support = None
+        resistance = None
+        if len(self._swing_lows) == 2:
+            support = build_support_line_from_swings(
+                lows, highs, bar_idx, self._swing_lows[0], self._swing_lows[1],
+                cfg.avg_range_lookback, cfg.steepness_max_ratio,
+                cfg.obstruction_tolerance_points,
+            )
+        if len(self._swing_highs) == 2:
+            resistance = build_resistance_line_from_swings(
+                lows, highs, bar_idx, self._swing_highs[0], self._swing_highs[1],
+                cfg.avg_range_lookback, cfg.steepness_max_ratio,
+                cfg.obstruction_tolerance_points,
+            )
+        return support, resistance
 
     def on_bar(
         self,
@@ -92,17 +171,10 @@ class SignalGenerator:
         # unrelated recompute doesn't reset broken/broken_bar state, and a
         # rejected candidate (obstructed/too steep) doesn't clobber an
         # already-valid line.
-        new_support = build_support_line(
-            lows, highs, bar_idx, cfg.swing_lookback, cfg.avg_range_lookback,
-            cfg.steepness_max_ratio, cfg.obstruction_tolerance_points,
-        )
+        new_support, new_resistance = self._candidate_lines(bar_idx, highs, lows)
         if new_support is not None and not is_same_line(self._support_line, new_support):
             self._support_line = new_support
 
-        new_resistance = build_resistance_line(
-            lows, highs, bar_idx, cfg.swing_lookback, cfg.avg_range_lookback,
-            cfg.steepness_max_ratio, cfg.obstruction_tolerance_points,
-        )
         if new_resistance is not None and not is_same_line(self._resistance_line, new_resistance):
             self._resistance_line = new_resistance
 

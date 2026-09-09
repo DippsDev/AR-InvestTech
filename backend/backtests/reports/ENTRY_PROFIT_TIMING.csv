@@ -1,0 +1,229 @@
+strategy,strategy_label,symbol,timeframe_minutes,trade_id,direction,entry_time,exit_time,exit_reason,pnl_usd,won,ever_profitable,bars_to_profit,minutes_to_profit,bars_observed,minutes_observed,first_profit_source
+mutanabby,Mutanabby,US30m,60.0,5,long,2025-11-25 11:00:00-05:00,2025-12-11 09:00:00-05:00,target2,337.56019987222345,True,True,1.0,60.0,258,15480.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,5,long,2025-11-26 12:00:00-05:00,2025-11-30 19:00:00-05:00,stop,-105.0,False,True,1.0,60.0,37,2220.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,2,long,2025-12-02 11:00:00-05:00,2025-12-17 11:00:00-05:00,stop,-105.00000000000001,False,True,2.0,120.0,361,21660.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,6,long,2025-12-02 23:00:00-05:00,2025-12-03 05:00:00-05:00,stop,-105.0,False,False,,,7,420.0,
+mutanabby,Mutanabby,USDJPYm,60.0,5,long,2025-12-08 11:00:00-05:00,2025-12-10 21:00:00-05:00,stop,88.02794582219205,True,True,1.0,60.0,59,3540.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,7,short,2025-12-10 23:00:00-05:00,2025-12-11 05:00:00-05:00,stop,-105.0,False,False,,,7,420.0,
+mutanabby,Mutanabby,US30m,60.0,6,short,2025-12-12 12:00:00-05:00,2025-12-15 04:00:00-05:00,stop,-105.0,False,False,,,16,960.0,
+mutanabby,Mutanabby,USDJPYm,60.0,6,long,2025-12-17 16:00:00-05:00,2025-12-17 19:00:00-05:00,stop,-105.00000000000001,False,False,,,4,240.0,
+mutanabby,Mutanabby,JP225m,60.0,8,long,2025-12-19 04:00:00-05:00,2026-01-04 23:00:00-05:00,target2,336.64767974143945,True,True,5.0,300.0,200,12000.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,3,long,2025-12-19 16:00:00-05:00,2025-12-23 08:00:00-05:00,stop,-105.0,False,True,37.0,2220.0,89,5340.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,7,long,2025-12-22 12:00:00-05:00,2025-12-23 09:00:00-05:00,stop,-105.0,False,True,1.0,60.0,21,1260.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,7,short,2025-12-22 22:00:00-05:00,2025-12-26 12:00:00-05:00,stop,-105.0,False,True,1.0,60.0,63,3780.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,4,short,2025-12-23 10:00:00-05:00,2025-12-23 15:00:00-05:00,stop,-105.0,False,True,3.0,180.0,6,360.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,5,long,2025-12-28 22:00:00-05:00,2025-12-29 04:00:00-05:00,stop,-104.99999999999999,False,True,1.0,60.0,7,420.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,8,short,2025-12-29 12:00:00-05:00,2025-12-31 15:00:00-05:00,target2,336.04487632232303,True,True,1.0,60.0,50,3000.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,6,short,2025-12-29 14:00:00-05:00,2025-12-30 03:00:00-05:00,stop,-105.00000000000001,False,False,,,14,840.0,
+mutanabby,Mutanabby,USDJPYm,60.0,8,long,2025-12-31 09:00:00-05:00,2026-01-05 10:00:00-05:00,stop,-105.0,False,True,1.0,60.0,50,3000.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,7,long,2026-01-02 05:00:00-05:00,2026-01-04 20:00:00-05:00,target2,334.4002060870282,True,True,1.0,60.0,64,3840.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,9,long,2026-01-05 10:00:00-05:00,2026-03-02 01:00:00-05:00,stop,-105.0,False,True,1.0,60.0,904,54240.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,9,short,2026-01-05 14:00:00-05:00,2026-01-05 18:00:00-05:00,stop,-105.0,False,False,,,5,300.0,
+mutanabby,Mutanabby,JP225m,60.0,9,short,2026-01-07 22:00:00-05:00,2026-01-09 00:00:00-05:00,stop,-104.99999999999999,False,True,1.0,60.0,26,1560.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,8,short,2026-01-08 02:00:00-05:00,2026-01-13 10:00:00-05:00,stop,-104.99999999999999,False,True,6.0,360.0,129,7740.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,10,long,2026-01-08 23:00:00-05:00,2026-01-09 10:00:00-05:00,target2,326.6472674285717,True,True,2.0,120.0,12,720.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,10,long,2026-01-09 09:00:00-05:00,2026-01-09 10:00:00-05:00,target2,510.1053344259072,True,True,1.0,60.0,2,120.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,11,short,2026-01-14 10:00:00-05:00,2026-01-23 01:00:00-05:00,stop,-105.0,False,True,1.0,60.0,160,9600.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,11,short,2026-01-18 20:00:00-05:00,2026-01-21 20:00:00-05:00,stop,87.87680184738323,True,True,19.0,1140.0,66,3960.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,9,short,2026-01-18 20:00:00-05:00,2026-01-25 14:00:00-05:00,target2,337.6268730207014,True,True,1.0,60.0,163,9780.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,12,short,2026-01-23 12:00:00-05:00,2026-01-26 03:00:00-05:00,target2,339.1070835937874,True,True,1.0,60.0,16,960.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,12,short,2026-01-23 13:00:00-05:00,2026-01-28 01:00:00-05:00,stop,-105.0,False,True,4.0,240.0,58,3480.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,10,long,2026-01-27 12:00:00-05:00,2026-01-29 09:00:00-05:00,stop,-105.0,False,True,4.0,240.0,46,2760.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,13,short,2026-01-29 11:00:00-05:00,2026-01-29 16:00:00-05:00,stop,-105.0,False,False,,,6,360.0,
+mutanabby,Mutanabby,USDJPYm,60.0,13,long,2026-01-30 15:00:00-05:00,2026-02-04 03:00:00-05:00,target2,333.6644251616103,True,True,1.0,60.0,61,3660.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,14,long,2026-02-01 20:00:00-05:00,2026-02-01 22:00:00-05:00,stop,-105.0,False,False,,,3,180.0,
+mutanabby,Mutanabby,JP225m,60.0,15,short,2026-02-05 19:00:00-05:00,2026-02-05 22:00:00-05:00,stop,-104.99999999999999,False,False,,,4,240.0,
+mutanabby,Mutanabby,JP225m,60.0,16,long,2026-02-06 05:00:00-05:00,2026-02-08 18:00:00-05:00,target2,335.75614205254277,True,True,2.0,120.0,13,780.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,14,short,2026-02-09 09:00:00-05:00,2026-02-11 01:00:00-05:00,target2,335.88462251009906,True,True,1.0,60.0,41,2460.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,17,short,2026-02-12 12:00:00-05:00,2026-02-13 08:00:00-05:00,stop,-105.0,False,True,4.0,240.0,20,1200.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,11,long,2026-02-13 12:00:00-05:00,2026-02-15 08:00:00-05:00,stop,-105.0,False,True,16.0,960.0,45,2700.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,18,long,2026-02-18 10:00:00-05:00,2026-02-19 09:00:00-05:00,stop,-105.0,False,True,1.0,60.0,23,1380.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,15,long,2026-02-18 10:00:00-05:00,2026-03-02 03:00:00-05:00,target2,338.75869218363414,True,True,2.0,120.0,186,11160.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,19,short,2026-02-22 20:00:00-05:00,2026-02-23 19:00:00-05:00,stop,-105.0,False,False,,,23,1380.0,
+mutanabby,Mutanabby,JP225m,60.0,20,long,2026-02-24 10:00:00-05:00,2026-02-25 16:00:00-05:00,target2,340.14611030515545,True,True,1.0,60.0,30,1800.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,12,long,2026-02-25 08:00:00-05:00,2026-02-27 17:00:00-05:00,stop,88.24620270989075,True,True,1.0,60.0,58,3480.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,21,short,2026-02-26 00:00:00-05:00,2026-02-26 06:00:00-05:00,stop,-105.0,False,False,,,7,420.0,
+mutanabby,Mutanabby,ETHUSDm,60.0,13,long,2026-02-28 21:00:00-05:00,2026-03-01 15:00:00-05:00,stop,-104.99999999999999,False,True,1.0,60.0,19,1140.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,14,short,2026-03-06 11:00:00-05:00,2026-03-09 09:00:00-04:00,stop,-104.99999999999999,False,True,1.0,60.0,70,4200.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,15,long,2026-03-09 11:00:00-04:00,2026-03-13 09:00:00-04:00,target2,336.72036987033493,True,True,2.0,120.0,95,5700.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,10,long,2026-03-10 04:00:00-04:00,2026-03-11 09:00:00-04:00,stop,-105.0,False,True,2.0,120.0,29,1740.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,16,short,2026-03-10 04:00:00-04:00,2026-03-10 06:00:00-04:00,stop,-105.0,False,False,,,3,180.0,
+mutanabby,Mutanabby,JP225m,60.0,22,long,2026-03-11 00:00:00-04:00,2026-03-11 01:00:00-04:00,stop,-105.00000000000001,False,False,,,2,120.0,
+mutanabby,Mutanabby,USDJPYm,60.0,17,long,2026-03-11 13:00:00-04:00,2026-03-19 09:00:00-04:00,stop,87.95337252333947,True,True,2.0,120.0,141,8460.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,11,short,2026-03-11 22:00:00-04:00,2026-03-17 09:00:00-04:00,stop,-105.0,False,True,1.0,60.0,81,4860.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,23,short,2026-03-13 04:00:00-04:00,2026-03-13 07:00:00-04:00,stop,-105.0,False,False,,,4,240.0,
+mutanabby,Mutanabby,ETHUSDm,60.0,16,short,2026-03-18 11:00:00-04:00,2026-04-07 19:00:00-04:00,stop,88.857064812382,True,True,2.0,120.0,489,29340.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,18,long,2026-03-20 12:00:00-04:00,2026-03-23 07:00:00-04:00,stop,-105.0,False,True,3.0,180.0,20,1200.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,12,long,2026-03-23 09:00:00-04:00,2026-03-24 09:00:00-04:00,stop,-105.0,False,False,,,24,1440.0,
+mutanabby,Mutanabby,JP225m,60.0,24,long,2026-03-23 11:00:00-04:00,2026-03-23 20:00:00-04:00,stop,-105.0,False,False,,,9,540.0,
+mutanabby,Mutanabby,USDJPYm,60.0,19,short,2026-03-23 15:00:00-04:00,2026-03-24 09:00:00-04:00,stop,-105.0,False,False,,,19,1140.0,
+mutanabby,Mutanabby,USDJPYm,60.0,20,long,2026-03-27 04:00:00-04:00,2026-03-30 03:00:00-04:00,stop,-105.0,False,True,8.0,480.0,24,1440.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,25,short,2026-03-27 07:00:00-04:00,2026-03-31 12:00:00-04:00,stop,-105.0,False,True,3.0,180.0,52,3120.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,13,short,2026-03-27 10:00:00-04:00,2026-03-31 12:00:00-04:00,stop,-105.0,False,True,4.0,240.0,49,2940.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,21,short,2026-03-31 10:00:00-04:00,2026-04-02 03:00:00-04:00,stop,-105.0,False,True,3.0,180.0,42,2520.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,26,long,2026-03-31 15:00:00-04:00,2026-04-02 08:00:00-04:00,stop,-104.99999999999999,False,True,1.0,60.0,40,2400.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,22,long,2026-04-06 21:00:00-04:00,2026-04-07 04:00:00-04:00,stop,-105.0,False,True,1.0,60.0,8,480.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,27,long,2026-04-07 19:00:00-04:00,2026-05-25 11:00:00-04:00,target2,337.144147091515,True,True,1.0,60.0,776,46560.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,23,short,2026-04-07 19:00:00-04:00,2026-04-12 18:00:00-04:00,stop,-105.0,False,True,1.0,60.0,72,4320.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,17,short,2026-04-12 07:00:00-04:00,2026-04-13 10:00:00-04:00,stop,-105.0,False,True,2.0,120.0,28,1680.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,14,short,2026-04-12 19:00:00-04:00,2026-04-13 02:00:00-04:00,stop,-105.0,False,False,,,8,480.0,
+mutanabby,Mutanabby,US30m,60.0,15,long,2026-04-13 16:00:00-04:00,2026-04-17 10:00:00-04:00,target2,338.47775206062073,True,True,1.0,60.0,87,5220.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,18,long,2026-04-13 16:00:00-04:00,2026-05-15 10:00:00-04:00,stop,89.26700508092394,True,True,3.0,180.0,763,45780.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,24,short,2026-04-14 01:00:00-04:00,2026-04-14 02:00:00-04:00,stop,-105.0,False,False,,,2,120.0,
+mutanabby,Mutanabby,USDJPYm,60.0,25,long,2026-04-21 13:00:00-04:00,2026-04-21 20:00:00-04:00,stop,-104.99999999999999,False,True,3.0,180.0,8,480.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,16,short,2026-04-21 16:00:00-04:00,2026-04-22 08:00:00-04:00,stop,-104.99999999999999,False,False,,,16,960.0,
+mutanabby,Mutanabby,USDJPYm,60.0,26,short,2026-04-30 05:00:00-04:00,2026-04-30 07:00:00-04:00,target2,335.78845454349505,True,True,1.0,60.0,3,180.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,17,long,2026-04-30 10:00:00-04:00,2026-05-22 08:00:00-04:00,target2,337.521538281732,True,True,1.0,60.0,367,22020.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,27,long,2026-05-11 22:00:00-04:00,2026-05-12 01:00:00-04:00,stop,-105.0,False,True,1.0,60.0,4,240.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,19,long,2026-05-23 17:00:00-04:00,2026-05-26 13:00:00-04:00,stop,-105.00000000000001,False,False,,,69,4140.0,
+mutanabby,Mutanabby,US30m,60.0,18,short,2026-05-26 11:00:00-04:00,2026-05-27 10:00:00-04:00,stop,-105.0,False,True,1.0,60.0,23,1380.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,20,short,2026-05-27 11:00:00-04:00,2026-05-28 00:00:00-04:00,target2,331.9271509593463,True,True,3.0,180.0,14,840.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,28,short,2026-05-27 20:00:00-04:00,2026-05-28 10:00:00-04:00,stop,-105.0,False,True,4.0,240.0,15,900.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,29,long,2026-05-29 01:00:00-04:00,2026-06-01 21:00:00-04:00,stop,-105.0,False,True,1.0,60.0,43,2580.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,19,long,2026-05-29 11:00:00-04:00,2026-06-03 16:00:00-04:00,stop,-105.0,False,True,1.0,60.0,75,4500.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,20,long,2026-06-04 09:00:00-04:00,2026-06-05 14:00:00-04:00,stop,-105.0,False,True,1.0,60.0,29,1740.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,30,short,2026-06-04 21:00:00-04:00,2026-06-12 11:00:00-04:00,stop,90.0520308762099,True,True,13.0,780.0,130,7800.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,21,long,2026-06-07 20:00:00-04:00,2026-06-08 01:00:00-04:00,stop,-104.99999999999999,False,True,1.0,60.0,6,360.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,28,short,2026-06-11 14:00:00-04:00,2026-06-17 15:00:00-04:00,stop,-105.0,False,True,1.0,60.0,98,5880.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,21,long,2026-06-12 05:00:00-04:00,2026-06-25 10:00:00-04:00,target2,336.9192567850796,True,True,1.0,60.0,209,12540.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,22,short,2026-06-18 01:00:00-04:00,2026-06-22 07:00:00-04:00,stop,-105.0,False,True,11.0,660.0,103,6180.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,31,short,2026-06-23 01:00:00-04:00,2026-06-24 23:00:00-04:00,stop,-105.0,False,True,1.0,60.0,45,2700.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,23,short,2026-06-23 03:00:00-04:00,2026-06-25 09:00:00-04:00,target2,335.5556342912712,True,True,1.0,60.0,55,3300.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,32,short,2026-06-25 22:00:00-04:00,2026-06-30 13:00:00-04:00,stop,-105.0,False,True,1.0,60.0,62,3720.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,24,long,2026-06-29 14:00:00-04:00,2026-06-30 08:00:00-04:00,stop,-105.0,False,False,,,19,1140.0,
+mutanabby,Mutanabby,USDJPYm,60.0,29,short,2026-07-02 03:00:00-04:00,2026-07-08 05:00:00-04:00,stop,-105.0,False,True,1.0,60.0,99,5940.0,bar_close
+mutanabby,Mutanabby,US30m,60.0,22,short,2026-07-08 03:00:00-04:00,2026-07-08 10:00:00-04:00,target2,339.9676353296574,True,True,1.0,60.0,8,480.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,30,short,2026-07-09 22:00:00-04:00,2026-07-13 01:00:00-04:00,stop,-105.00000000000001,False,True,1.0,60.0,28,1680.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,25,short,2026-07-13 10:00:00-04:00,2026-07-13 21:00:00-04:00,stop,-105.0,False,True,4.0,240.0,12,720.0,bar_close
+mutanabby,Mutanabby,ETHUSDm,60.0,26,long,2026-07-14 09:00:00-04:00,2026-07-22 23:00:00-04:00,time_exit,66.92096278585184,True,True,1.0,60.0,207,12420.0,bar_close
+mutanabby,Mutanabby,USDJPYm,60.0,31,long,2026-07-21 05:00:00-04:00,2026-07-22 04:00:00-04:00,time_exit,225.25614745819112,True,True,3.0,180.0,24,1440.0,bar_close
+mutanabby,Mutanabby,JP225m,60.0,33,long,2026-07-21 11:00:00-04:00,2026-07-22 02:00:00-04:00,stop,-105.0,False,True,1.0,60.0,15,900.0,bar_close
+silver_bullet,Silver Bullet,USTECm,5.0,1,short,2025-12-02 10:40:00-05:00,2025-12-02 10:45:00-05:00,stop,-144.77857703180882,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,USTECm,5.0,2,long,2025-12-11 11:50:00-05:00,2025-12-11 11:55:00-05:00,stop,-44.999999999998735,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,USTECm,5.0,3,short,2025-12-18 14:10:00-05:00,2025-12-18 14:15:00-05:00,stop,165.509151986161,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,USTECm,5.0,4,short,2025-12-26 11:20:00-05:00,2025-12-26 11:25:00-05:00,stop,26.453142793623527,True,True,2.0,10.0,2,10.0,profitable_exit
+silver_bullet,Silver Bullet,XAUUSDm,5.0,1,short,2026-01-12 11:45:00-05:00,2026-01-12 12:00:00-05:00,time_exit,-10.432763377036354,False,False,,,4,20.0,
+silver_bullet,Silver Bullet,XAUUSDm,5.0,2,long,2026-01-15 11:20:00-05:00,2026-01-15 11:25:00-05:00,stop,-45.000000000003844,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,USTECm,5.0,5,short,2026-01-20 11:50:00-05:00,2026-01-20 11:55:00-05:00,stop,119.71029093791896,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,XAUUSDm,5.0,3,short,2026-01-26 11:45:00-05:00,2026-01-26 11:55:00-05:00,stop,-44.99999999999851,False,True,1.0,5.0,3,15.0,bar_close
+silver_bullet,Silver Bullet,USTECm,5.0,6,long,2026-01-30 10:55:00-05:00,2026-01-30 11:00:00-05:00,stop,11.124999013378318,True,True,2.0,10.0,2,10.0,profitable_exit
+silver_bullet,Silver Bullet,XAUUSDm,5.0,4,long,2026-02-02 11:30:00-05:00,2026-02-02 11:35:00-05:00,stop,220.2274913768031,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,USTECm,5.0,7,long,2026-02-05 14:25:00-05:00,2026-02-05 14:30:00-05:00,stop,-105.0,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,XAUUSDm,5.0,5,long,2026-02-12 10:55:00-05:00,2026-02-12 11:00:00-05:00,stop,79.12768541807529,True,True,2.0,10.0,2,10.0,profitable_exit
+silver_bullet,Silver Bullet,XAUUSDm,5.0,6,long,2026-02-26 13:55:00-05:00,2026-02-26 14:00:00-05:00,stop,21.770979332487162,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,XAUUSDm,5.0,7,short,2026-02-27 10:25:00-05:00,2026-02-27 10:30:00-05:00,stop,-46.325408970124165,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,USTECm,5.0,8,short,2026-02-27 11:50:00-05:00,2026-02-27 11:55:00-05:00,stop,-105.0,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,USTECm,5.0,9,short,2026-03-02 11:35:00-05:00,2026-03-02 11:40:00-05:00,stop,-187.57758461817377,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,XAUUSDm,5.0,8,long,2026-03-04 14:10:00-05:00,2026-03-04 14:15:00-05:00,stop,11.569733807725514,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,XAUUSDm,5.0,9,long,2026-03-10 10:35:00-04:00,2026-03-10 10:40:00-04:00,stop,94.43279554641836,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,USTECm,5.0,10,short,2026-03-30 11:30:00-04:00,2026-03-30 11:35:00-04:00,stop,-146.4946729451344,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,XAUUSDm,5.0,10,long,2026-03-31 11:25:00-04:00,2026-03-31 11:30:00-04:00,stop,66.334173895053,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,XAUUSDm,5.0,11,short,2026-04-22 10:20:00-04:00,2026-04-22 10:25:00-04:00,stop,357.1216242577315,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,XAUUSDm,5.0,12,long,2026-05-04 10:50:00-04:00,2026-05-04 10:55:00-04:00,stop,22.192113084589415,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,XAUUSDm,5.0,13,long,2026-05-05 10:45:00-04:00,2026-05-05 10:50:00-04:00,stop,40.55897017676976,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,USTECm,5.0,11,long,2026-05-14 14:00:00-04:00,2026-05-14 14:05:00-04:00,stop,-293.15116360749136,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,XAUUSDm,5.0,14,long,2026-05-15 10:25:00-04:00,2026-05-15 10:30:00-04:00,stop,20.69653647846955,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,USTECm,5.0,12,long,2026-05-27 10:55:00-04:00,2026-05-27 11:00:00-04:00,stop,-104.99999999999999,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,USTECm,5.0,13,long,2026-05-28 10:20:00-04:00,2026-05-28 10:25:00-04:00,stop,132.72863933043462,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,USTECm,5.0,14,long,2026-06-12 10:40:00-04:00,2026-06-12 10:45:00-04:00,stop,18.648284496250927,True,True,2.0,10.0,2,10.0,profitable_exit
+silver_bullet,Silver Bullet,USTECm,5.0,15,long,2026-06-18 10:30:00-04:00,2026-06-18 10:35:00-04:00,stop,334.2137892783985,True,True,1.0,5.0,2,10.0,bar_close
+silver_bullet,Silver Bullet,USTECm,5.0,16,short,2026-06-25 11:20:00-04:00,2026-06-25 11:25:00-04:00,stop,15.981149471882786,True,True,2.0,10.0,2,10.0,profitable_exit
+silver_bullet,Silver Bullet,XAUUSDm,5.0,15,short,2026-07-09 10:25:00-04:00,2026-07-09 10:30:00-04:00,stop,36.28655240440259,True,True,2.0,10.0,2,10.0,profitable_exit
+silver_bullet,Silver Bullet,USTECm,5.0,17,short,2026-07-10 11:55:00-04:00,2026-07-10 12:00:00-04:00,stop,-105.0,False,False,,,2,10.0,
+silver_bullet,Silver Bullet,USTECm,5.0,18,long,2026-07-21 10:35:00-04:00,2026-07-21 10:40:00-04:00,stop,79.66759474724918,True,True,1.0,5.0,2,10.0,bar_close
+trendline,Trendline,DE30m,60.0,3,long,2025-11-25 06:00:00-05:00,2025-11-25 07:00:00-05:00,stop,17.611751095211147,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,4,long,2025-11-26 15:00:00-05:00,2025-11-26 16:00:00-05:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,DE30m,60.0,4,long,2025-11-28 00:00:00-05:00,2025-11-28 02:00:00-05:00,stop,-105.0,False,False,,,3,180.0,
+trendline,Trendline,DE30m,60.0,5,long,2025-12-01 23:00:00-05:00,2025-12-02 01:00:00-05:00,stop,14.454044555663035,True,True,2.0,120.0,3,180.0,bar_close
+trendline,Trendline,DE30m,60.0,6,long,2025-12-02 09:00:00-05:00,2025-12-02 10:00:00-05:00,stop,47.476768839469294,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,7,long,2025-12-03 02:00:00-05:00,2025-12-03 03:00:00-05:00,stop,-16.572403620885755,False,False,,,2,120.0,
+trendline,Trendline,USDJPYm,60.0,2,long,2025-12-03 03:00:00-05:00,2025-12-03 05:00:00-05:00,stop,-104.99999999999999,False,False,,,3,180.0,
+trendline,Trendline,DE30m,60.0,8,short,2025-12-03 05:00:00-05:00,2025-12-03 08:00:00-05:00,stop,25.711301368041863,True,True,1.0,60.0,4,240.0,bar_close
+trendline,Trendline,USTECm,60.0,5,short,2025-12-03 16:00:00-05:00,2025-12-03 21:00:00-05:00,stop,33.91036197913499,True,True,1.0,60.0,5,300.0,bar_close
+trendline,Trendline,USTECm,60.0,6,short,2025-12-04 06:00:00-05:00,2025-12-04 09:00:00-05:00,stop,13.068596311682544,True,True,3.0,180.0,4,240.0,bar_close
+trendline,Trendline,DE30m,60.0,9,long,2025-12-04 15:00:00-05:00,2025-12-05 02:00:00-05:00,stop,82.28079427815535,True,True,1.0,60.0,11,660.0,bar_close
+trendline,Trendline,DE30m,60.0,10,short,2025-12-15 07:00:00-05:00,2025-12-15 08:00:00-05:00,stop,119.21275706851101,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,11,short,2025-12-16 22:00:00-05:00,2025-12-17 00:00:00-05:00,stop,59.4170423639267,True,True,1.0,60.0,3,180.0,bar_close
+trendline,Trendline,USDJPYm,60.0,3,short,2025-12-18 04:00:00-05:00,2025-12-18 05:00:00-05:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,DE30m,60.0,12,short,2025-12-23 04:00:00-05:00,2025-12-23 10:00:00-05:00,stop,-104.99999999999999,False,True,5.0,300.0,7,420.0,bar_close
+trendline,Trendline,USTECm,60.0,7,long,2025-12-23 08:00:00-05:00,2025-12-23 09:00:00-05:00,stop,-233.37286504263574,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,8,long,2025-12-24 10:00:00-05:00,2025-12-24 11:00:00-05:00,stop,48.71245204473666,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,13,short,2025-12-29 16:00:00-05:00,2025-12-29 20:00:00-05:00,stop,-105.00000000000001,False,True,2.0,120.0,4,240.0,bar_close
+trendline,Trendline,USTECm,60.0,9,short,2025-12-29 19:00:00-05:00,2025-12-29 23:00:00-05:00,stop,-105.0,False,True,1.0,60.0,5,300.0,bar_close
+trendline,Trendline,USTECm,60.0,10,short,2025-12-30 08:00:00-05:00,2025-12-30 09:00:00-05:00,stop,42.50394845250194,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,14,long,2026-01-02 14:00:00-05:00,2026-01-02 15:00:00-05:00,stop,160.2559091462073,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,4,short,2026-01-06 09:00:00-05:00,2026-01-06 10:00:00-05:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,USDJPYm,60.0,5,short,2026-01-06 22:00:00-05:00,2026-01-06 23:00:00-05:00,stop,76.70576944370906,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,11,long,2026-01-07 09:00:00-05:00,2026-01-07 10:00:00-05:00,stop,266.2033266680803,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,15,long,2026-01-07 20:00:00-05:00,2026-01-07 21:00:00-05:00,stop,45.08756200811072,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,6,long,2026-01-15 15:00:00-05:00,2026-01-15 16:00:00-05:00,stop,125.90221242898534,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,12,short,2026-01-20 09:00:00-05:00,2026-01-20 10:00:00-05:00,stop,-168.22561088313782,False,False,,,2,120.0,
+trendline,Trendline,USDJPYm,60.0,7,short,2026-01-21 02:00:00-05:00,2026-01-21 03:00:00-05:00,stop,167.37264898276922,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,8,long,2026-01-22 18:00:00-05:00,2026-01-22 19:00:00-05:00,stop,50.9146354429207,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,13,long,2026-01-22 19:00:00-05:00,2026-01-22 20:00:00-05:00,stop,75.21207476832534,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,14,short,2026-01-22 22:00:00-05:00,2026-01-22 23:00:00-05:00,stop,-113.99743791799844,False,False,,,2,120.0,
+trendline,Trendline,DE30m,60.0,16,long,2026-01-23 06:00:00-05:00,2026-01-23 07:00:00-05:00,stop,62.74239263246774,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,17,short,2026-01-23 09:00:00-05:00,2026-01-23 10:00:00-05:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,USDJPYm,60.0,9,short,2026-01-26 15:00:00-05:00,2026-01-26 18:00:00-05:00,stop,-105.0,False,False,,,4,240.0,
+trendline,Trendline,DE30m,60.0,18,short,2026-02-05 03:00:00-05:00,2026-02-05 04:00:00-05:00,stop,254.09593973736906,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,15,long,2026-02-05 05:00:00-05:00,2026-02-05 07:00:00-05:00,stop,-105.0,False,False,,,3,180.0,
+trendline,Trendline,DE30m,60.0,19,short,2026-02-05 16:00:00-05:00,2026-02-05 18:00:00-05:00,stop,57.09075870842831,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,20,short,2026-02-09 04:00:00-05:00,2026-02-09 10:00:00-05:00,stop,-105.0,False,True,1.0,60.0,7,420.0,bar_close
+trendline,Trendline,USDJPYm,60.0,10,short,2026-02-10 08:00:00-05:00,2026-02-10 09:00:00-05:00,stop,623.623350575887,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,16,long,2026-02-15 21:00:00-05:00,2026-02-15 22:00:00-05:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,17,short,2026-02-16 01:00:00-05:00,2026-02-16 02:00:00-05:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,18,long,2026-02-17 11:00:00-05:00,2026-02-17 12:00:00-05:00,stop,50.60412842630661,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,11,long,2026-02-19 15:00:00-05:00,2026-02-19 17:00:00-05:00,stop,-105.0,False,False,,,3,180.0,
+trendline,Trendline,USTECm,60.0,19,long,2026-02-23 09:00:00-05:00,2026-02-23 10:00:00-05:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,USDJPYm,60.0,12,short,2026-02-24 20:00:00-05:00,2026-02-24 22:00:00-05:00,stop,-105.0,False,True,2.0,120.0,3,180.0,bar_close
+trendline,Trendline,DE30m,60.0,21,long,2026-02-26 21:00:00-05:00,2026-02-26 22:00:00-05:00,stop,78.96474338701452,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,20,short,2026-03-20 05:00:00-04:00,2026-03-20 06:00:00-04:00,stop,327.41344410055086,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,13,short,2026-03-24 06:00:00-04:00,2026-03-24 07:00:00-04:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,DE30m,60.0,22,short,2026-03-24 09:00:00-04:00,2026-03-24 10:00:00-04:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,21,long,2026-03-26 03:00:00-04:00,2026-03-26 04:00:00-04:00,stop,-105.00000000000001,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,22,short,2026-04-06 00:00:00-04:00,2026-04-06 01:00:00-04:00,stop,-191.72316384510816,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,23,short,2026-04-06 11:00:00-04:00,2026-04-07 08:00:00-04:00,stop,54.11977568921789,True,True,3.0,180.0,21,1260.0,bar_close
+trendline,Trendline,USDJPYm,60.0,14,short,2026-04-06 23:00:00-04:00,2026-04-07 00:00:00-04:00,stop,42.53377065887857,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,23,short,2026-04-08 13:00:00-04:00,2026-04-08 14:00:00-04:00,stop,332.37882527447033,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,24,short,2026-04-09 15:00:00-04:00,2026-04-09 21:00:00-04:00,stop,-105.0,False,True,3.0,180.0,6,360.0,bar_close
+trendline,Trendline,USDJPYm,60.0,15,long,2026-04-14 18:00:00-04:00,2026-04-14 21:00:00-04:00,stop,-14.73742062782318,False,True,1.0,60.0,4,240.0,bar_close
+trendline,Trendline,USTECm,60.0,24,short,2026-04-21 02:00:00-04:00,2026-04-21 04:00:00-04:00,stop,43.39614060451462,True,True,2.0,120.0,3,180.0,bar_close
+trendline,Trendline,DE30m,60.0,25,short,2026-04-21 03:00:00-04:00,2026-04-21 04:00:00-04:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,DE30m,60.0,26,long,2026-04-22 16:00:00-04:00,2026-04-22 20:00:00-04:00,stop,-105.00000000000001,False,False,,,4,240.0,
+trendline,Trendline,USDJPYm,60.0,16,short,2026-04-23 14:00:00-04:00,2026-04-26 21:00:00-04:00,stop,21.62002333666621,True,True,18.0,1080.0,32,1920.0,bar_close
+trendline,Trendline,USTECm,60.0,25,short,2026-05-04 04:00:00-04:00,2026-05-04 06:00:00-04:00,stop,509.9049575895253,True,True,1.0,60.0,3,180.0,bar_close
+trendline,Trendline,DE30m,60.0,27,short,2026-05-04 07:00:00-04:00,2026-05-04 10:00:00-04:00,stop,55.10431341232632,True,True,1.0,60.0,4,240.0,bar_close
+trendline,Trendline,USTECm,60.0,26,long,2026-05-04 13:00:00-04:00,2026-05-04 14:00:00-04:00,stop,61.134203525615916,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,28,short,2026-05-05 09:00:00-04:00,2026-05-05 10:00:00-04:00,stop,27.197203152833055,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,17,short,2026-05-05 19:00:00-04:00,2026-05-06 00:00:00-04:00,stop,1217.6551871368038,True,True,1.0,60.0,6,360.0,bar_close
+trendline,Trendline,DE30m,60.0,29,short,2026-05-07 04:00:00-04:00,2026-05-07 05:00:00-04:00,stop,62.026114360568535,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,30,long,2026-05-13 10:00:00-04:00,2026-05-13 11:00:00-04:00,stop,37.39284553460326,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,27,short,2026-05-13 16:00:00-04:00,2026-05-13 18:00:00-04:00,stop,-107.94067022322301,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,28,long,2026-05-18 08:00:00-04:00,2026-05-18 09:00:00-04:00,stop,126.68082980210431,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,31,short,2026-05-20 01:00:00-04:00,2026-05-20 02:00:00-04:00,stop,-110.67217492377033,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,29,long,2026-05-20 02:00:00-04:00,2026-05-20 03:00:00-04:00,stop,82.56606952900215,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USTECm,60.0,30,short,2026-05-21 15:00:00-04:00,2026-05-21 18:00:00-04:00,stop,-105.0,False,False,,,3,180.0,
+trendline,Trendline,DE30m,60.0,32,short,2026-05-22 10:00:00-04:00,2026-05-22 13:00:00-04:00,stop,48.53369388997689,True,True,2.0,120.0,4,240.0,bar_close
+trendline,Trendline,DE30m,60.0,33,short,2026-05-27 00:00:00-04:00,2026-05-27 01:00:00-04:00,stop,-104.99999999999999,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,31,long,2026-05-29 15:00:00-04:00,2026-05-29 16:00:00-04:00,stop,169.38305247154756,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,18,short,2026-06-01 01:00:00-04:00,2026-06-01 02:00:00-04:00,stop,-19.61704235096332,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,32,short,2026-06-02 09:00:00-04:00,2026-06-02 10:00:00-04:00,stop,-209.32477416644988,False,False,,,2,120.0,
+trendline,Trendline,USDJPYm,60.0,19,short,2026-06-08 20:00:00-04:00,2026-06-08 21:00:00-04:00,stop,-105.29717947449288,False,False,,,2,120.0,
+trendline,Trendline,USDJPYm,60.0,20,short,2026-06-11 09:00:00-04:00,2026-06-11 13:00:00-04:00,stop,576.0561349947785,True,True,1.0,60.0,5,300.0,bar_close
+trendline,Trendline,USDJPYm,60.0,21,long,2026-06-19 10:00:00-04:00,2026-06-19 11:00:00-04:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,DE30m,60.0,34,short,2026-06-22 12:00:00-04:00,2026-06-22 20:00:00-04:00,stop,59.72363170681692,True,True,1.0,60.0,8,480.0,bar_close
+trendline,Trendline,USTECm,60.0,33,short,2026-06-24 09:00:00-04:00,2026-06-24 10:00:00-04:00,stop,57.73536894018896,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,22,long,2026-06-24 13:00:00-04:00,2026-06-24 15:00:00-04:00,stop,-2.4121429713308147,False,True,1.0,60.0,3,180.0,bar_close
+trendline,Trendline,DE30m,60.0,35,short,2026-06-25 08:00:00-04:00,2026-06-25 09:00:00-04:00,stop,276.30057985139354,True,True,2.0,120.0,2,120.0,profitable_exit
+trendline,Trendline,USDJPYm,60.0,23,long,2026-06-25 18:00:00-04:00,2026-06-26 01:00:00-04:00,stop,-105.0,False,True,2.0,120.0,8,480.0,bar_close
+trendline,Trendline,DE30m,60.0,36,long,2026-06-30 03:00:00-04:00,2026-06-30 05:00:00-04:00,stop,-11.32867377895722,False,False,,,3,180.0,
+trendline,Trendline,DE30m,60.0,37,long,2026-06-30 10:00:00-04:00,2026-06-30 11:00:00-04:00,stop,-42.22653544235807,False,False,,,2,120.0,
+trendline,Trendline,DE30m,60.0,38,long,2026-07-01 02:00:00-04:00,2026-07-01 03:00:00-04:00,stop,80.24743964957347,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,24,long,2026-07-01 06:00:00-04:00,2026-07-01 09:00:00-04:00,stop,-105.0,False,False,,,4,240.0,
+trendline,Trendline,USTECm,60.0,34,long,2026-07-01 12:00:00-04:00,2026-07-01 13:00:00-04:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,USTECm,60.0,35,short,2026-07-09 05:00:00-04:00,2026-07-09 06:00:00-04:00,stop,15.986358550501846,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,DE30m,60.0,39,short,2026-07-09 23:00:00-04:00,2026-07-10 00:00:00-04:00,stop,-1.3993619080656479,False,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,25,long,2026-07-15 03:00:00-04:00,2026-07-15 04:00:00-04:00,stop,34.324693332007534,True,True,1.0,60.0,2,120.0,bar_close
+trendline,Trendline,USDJPYm,60.0,26,short,2026-07-16 00:00:00-04:00,2026-07-16 01:00:00-04:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,DE30m,60.0,40,short,2026-07-16 01:00:00-04:00,2026-07-16 02:00:00-04:00,stop,-105.0,False,False,,,2,120.0,
+trendline,Trendline,USDJPYm,60.0,27,short,2026-07-17 02:00:00-04:00,2026-07-17 03:00:00-04:00,stop,367.4974041807116,True,True,1.0,60.0,2,120.0,bar_close

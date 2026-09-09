@@ -21,7 +21,7 @@ Fill model
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 import pandas as pd
 
@@ -45,7 +45,7 @@ class Trade:
     # --- Exit ---
     exit_time: Optional[pd.Timestamp] = None
     exit_price: Optional[float] = None
-    exit_reason: Optional[str] = None   # "target" | "target2" | "stop" | "opposite_signal" | "time_exit"
+    exit_reason: Optional[str] = None   # target/target2/stop/opposite_signal/time_exit/survival_exit
 
     # --- Split target (TP1/TP2) ---
     # See trendline/backtest.py's Trade for the shared semantics: one Trade row
@@ -97,8 +97,13 @@ class BacktestCosts:
     max_entry_slip_r: float = 0.5
 
 
-def run_backtest(df: pd.DataFrame, cfg: MutanabbyConfig,
-                 costs: Optional[BacktestCosts] = None) -> list[Trade]:
+def run_backtest(
+    df: pd.DataFrame,
+    cfg: MutanabbyConfig,
+    costs: Optional[BacktestCosts] = None,
+    *,
+    exit_policy: Optional[Any] = None,
+) -> list[Trade]:
     """
     Run the Mutanabby backtest over `df`.
 
@@ -136,6 +141,23 @@ def run_backtest(df: pd.DataFrame, cfg: MutanabbyConfig,
         if open_trade is not None:
             trade = open_trade
             closed = False
+
+            # Optional research-only dynamic management. The policy sees the
+            # previous completed bar and fills at this bar's open, avoiding a
+            # same-bar lookahead from decision close to execution price.
+            if (
+                exit_policy is not None
+                and i > 0
+                and exit_policy.should_exit(trade, i - 1)
+            ):
+                trade.exit_time = bar_ts
+                trade.exit_price = bar_open
+                trade.exit_reason = "survival_exit"
+                _finalise_trade(trade, costs)
+                trades.append(trade)
+                open_trade = None
+                generator.notify_trade_closed()
+                continue
 
             if cfg.breakeven_r > 0 and not trade.breakeven_triggered:
                 trigger_dist = trade.risk_points * cfg.breakeven_r

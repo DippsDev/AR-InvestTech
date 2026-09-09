@@ -1,9 +1,11 @@
 metatrader5==5.0.5735
 matplotlib>=3.8.0
 numpy==2.4.6
+optuna>=4.0,<5.0
 pandas==3.0.3
 python-dateutil==2.9.0.post0
 python-dotenv==1.2.2
+scikit-learn>=1.5,<2.0
 fastapi>=0.100
 uvicorn>=0.20
 six==1.17.0
